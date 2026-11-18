@@ -71,9 +71,9 @@ export class LinkedInProvider extends BaseJobProvider {
       await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
       await this.browserManager.delay(2500);
 
-      // Human reading scroll
-      await this.browserManager.humanScroll(300, page);
-      await this.browserManager.humanPause(1000, 1800);
+      // Authentic human eye-tracking & job posting reading skim
+      this.log(`Candidate reading LinkedIn posting and requirements for "${job.title}"...`);
+      await this.browserManager.humanReadJobPosting(page, job.title);
 
       // Extract job description if present
       const jobDescription = await page.evaluate(() => {

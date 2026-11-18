@@ -10,6 +10,13 @@ const __dirname = path.dirname(__filename);
 // Enable stealth plugin
 puppeteer.use(StealthPlugin());
 
+// QWERTY keyboard proximity map for authentic human typo & self-correction emulation
+const QWERTY_NEIGHBORS = {
+  q: 'wa', w: 'qes', e: 'wrd', r: 'etf', t: 'ryg', y: 'tuh', u: 'yij', i: 'uok', o: 'ipl', p: 'ol',
+  a: 'qwsz', s: 'awedxz', d: 'serfcx', f: 'drtgvc', g: 'ftyhbv', h: 'gyujnb', j: 'huikmn', k: 'jiolm', l: 'kop',
+  z: 'asx', x: 'zsdc', c: 'xdfv', v: 'cfgb', b: 'vghn', n: 'bhjm', m: 'njk'
+};
+
 export class BrowserManager {
   constructor(options = {}) {
     const defaultChrome = process.platform === 'linux'
@@ -304,9 +311,10 @@ export class BrowserManager {
   }
 
   /**
-   * Human-like smooth mouse movement with cubic Bézier curve physics, biological micro-tremor, and deceleration
+   * Human-like smooth mouse movement with cubic Bézier curve physics, Fitts's law overshoot,
+   * biological micro-tremor, and deceleration
    */
-  async humanMouseMove(targetX, targetY, page = null) {
+  async humanMouseMove(targetX, targetY, page = null, allowOvershoot = true) {
     const targetPage = this._resolvePage(page);
     if (!targetPage || !targetPage.mouse) return;
     try {
@@ -316,13 +324,27 @@ export class BrowserManager {
       const distance = Math.hypot(targetX - startX, targetY - startY);
       if (distance < 2) return;
 
+      // Fitts's Law: For larger distances (>110px), humans naturally overshoot slightly and pull back
+      let overshootX = null;
+      let overshootY = null;
+
+      if (allowOvershoot && distance > 110 && Math.random() < 0.72) {
+        const angle = Math.atan2(targetY - startY, targetX - startX);
+        const overshootMag = Math.min(13, distance * 0.035);
+        overshootX = targetX + Math.cos(angle) * overshootMag + (Math.random() - 0.5) * 4;
+        overshootY = targetY + Math.sin(angle) * overshootMag + (Math.random() - 0.5) * 4;
+      }
+
+      const primaryDestX = overshootX !== null ? overshootX : targetX;
+      const primaryDestY = overshootY !== null ? overshootY : targetY;
+
       const steps = Math.max(12, Math.min(36, Math.floor(distance / 18)));
 
       // Randomized natural deflection control points for cubic Bézier trajectory
-      const cp1X = startX + (targetX - startX) * 0.25 + (Math.random() - 0.5) * (distance * 0.18);
-      const cp1Y = startY + (targetY - startY) * 0.25 + (Math.random() - 0.5) * (distance * 0.18);
-      const cp2X = startX + (targetX - startX) * 0.75 + (Math.random() - 0.5) * (distance * 0.12);
-      const cp2Y = startY + (targetY - startY) * 0.75 + (Math.random() - 0.5) * (distance * 0.12);
+      const cp1X = startX + (primaryDestX - startX) * 0.25 + (Math.random() - 0.5) * (distance * 0.18);
+      const cp1Y = startY + (primaryDestY - startY) * 0.25 + (Math.random() - 0.5) * (distance * 0.18);
+      const cp2X = startX + (primaryDestX - startX) * 0.75 + (Math.random() - 0.5) * (distance * 0.12);
+      const cp2Y = startY + (primaryDestY - startY) * 0.75 + (Math.random() - 0.5) * (distance * 0.12);
 
       for (let i = 1; i <= steps; i++) {
         const t = i / steps;
@@ -330,11 +352,11 @@ export class BrowserManager {
         let cx = Math.pow(1 - t, 3) * startX +
                  3 * Math.pow(1 - t, 2) * t * cp1X +
                  3 * (1 - t) * Math.pow(t, 2) * cp2X +
-                 Math.pow(t, 3) * targetX;
+                 Math.pow(t, 3) * primaryDestX;
         let cy = Math.pow(1 - t, 3) * startY +
                  3 * Math.pow(1 - t, 2) * t * cp1Y +
                  3 * (1 - t) * Math.pow(t, 2) * cp2Y +
-                 Math.pow(t, 3) * targetY;
+                 Math.pow(t, 3) * primaryDestY;
 
         // Subtle biological tremor (micro-jitter) in mid-flight
         if (t > 0.12 && t < 0.88) {
@@ -352,6 +374,24 @@ export class BrowserManager {
         const delay = Math.floor(6 + Math.pow(t, 1.8) * 10);
         await this.delay(delay);
       }
+
+      // If overshot, execute rapid 3-step neuromuscular correction back into target
+      if (overshootX !== null) {
+        await this.delay(Math.floor(Math.random() * 30) + 25);
+        const corrSteps = 4;
+        for (let j = 1; j <= corrSteps; j++) {
+          const ct = j / corrSteps;
+          const ccx = overshootX + (targetX - overshootX) * ct;
+          const ccy = overshootY + (targetY - overshootY) * ct;
+          await targetPage.mouse.move(ccx, ccy).catch(() => {});
+          targetPage.evaluate((x, y) => {
+            if (window.__updateHumanCursor) window.__updateHumanCursor(x, y, false);
+          }, ccx, ccy).catch(() => {});
+          this.cursorPos = { x: ccx, y: ccy };
+          await this.delay(12);
+        }
+      }
+
       this.cursorPos = { x: targetX, y: targetY };
       await targetPage.mouse.move(targetX, targetY).catch(() => {});
       targetPage.evaluate((x, y) => {
@@ -361,7 +401,7 @@ export class BrowserManager {
   }
 
   /**
-   * Human-like natural smooth scrolling with momentum
+   * Human-like natural smooth scrolling with physical mouse wheel dispatch and momentum
    */
   async humanScroll(amount = 400, page = null) {
     const target = this._resolvePage(page);
@@ -370,13 +410,20 @@ export class BrowserManager {
       const slices = Math.floor(Math.random() * 4) + 6;
       const sliceDelta = amount / slices;
       for (let i = 0; i < slices; i++) {
+        if (target.mouse && typeof target.mouse.wheel === 'function') {
+          await target.mouse.wheel({ deltaY: sliceDelta }).catch(() => {});
+        }
         await target.evaluate((d) => window.scrollBy({ top: d, behavior: 'smooth' }), sliceDelta).catch(() => {});
-        await this.delay(Math.floor(Math.random() * 100) + 70);
+        await this.delay(Math.floor(Math.random() * 90) + 60);
       }
-      // 15% probability of a brief human counter-scroll (re-skimming a heading)
-      if (Math.random() < 0.15 && amount > 200) {
+      // 18% probability of a brief human counter-scroll (re-skimming text)
+      if (Math.random() < 0.18 && Math.abs(amount) > 200) {
+        const backDelta = amount > 0 ? -85 : 85;
         await this.delay(180);
-        await target.evaluate(() => window.scrollBy({ top: -75, behavior: 'smooth' })).catch(() => {});
+        if (target.mouse && typeof target.mouse.wheel === 'function') {
+          await target.mouse.wheel({ deltaY: backDelta }).catch(() => {});
+        }
+        await target.evaluate((d) => window.scrollBy({ top: d, behavior: 'smooth' }), backDelta).catch(() => {});
         await this.delay(220);
       }
     } catch (e) {}
@@ -393,7 +440,7 @@ export class BrowserManager {
       const deltaY = (Math.random() - 0.5) * 50;
       const targetX = Math.max(60, Math.min(1180, this.cursorPos.x + deltaX));
       const targetY = Math.max(60, Math.min(820, this.cursorPos.y + deltaY));
-      await this.humanMouseMove(targetX, targetY, targetPage);
+      await this.humanMouseMove(targetX, targetY, targetPage, false);
     } catch (e) {}
   }
 
@@ -412,7 +459,44 @@ export class BrowserManager {
   }
 
   /**
-   * Human-like typing with variable cadence, burst rhythm, and controlled React synchronization
+   * Authentic eye-tracking and job reading emulation before applying
+   */
+  async humanReadJobPosting(page, jobTitle = '') {
+    const targetPage = this._resolvePage(page);
+    if (!targetPage) return;
+    try {
+      await this.injectHumanCursor(targetPage).catch(() => {});
+      // 1. Initial glance at job title / compensation at top of page (700-1100ms)
+      await this.delay(Math.floor(Math.random() * 400) + 700);
+
+      const titleEl = await targetPage.$('h1, h2.jobTitle, .jobs-unified-top-card__job-title').catch(() => null);
+      if (titleEl) {
+        const box = await titleEl.boundingBox().catch(() => null);
+        if (box) {
+          const glanceX = box.x + box.width * (0.3 + Math.random() * 0.3);
+          const glanceY = box.y + box.height * 0.5;
+          await this.humanMouseMove(glanceX, glanceY, targetPage, false);
+          await this.delay(Math.floor(Math.random() * 350) + 400);
+        }
+      }
+
+      // 2. Smooth physical scroll down into responsibilities
+      await this.humanScroll(Math.floor(Math.random() * 120) + 320, targetPage);
+      await this.delay(Math.floor(Math.random() * 600) + 800);
+
+      // 3. Natural reading gaze hover near requirements
+      await this.randomFidget(targetPage);
+      await this.humanScroll(Math.floor(Math.random() * 100) + 250, targetPage);
+      await this.delay(Math.floor(Math.random() * 800) + 1200);
+
+      // 4. Smooth scroll back up to the apply button
+      await this.humanScroll(-500, targetPage);
+      await this.delay(Math.floor(Math.random() * 300) + 400);
+    } catch (e) {}
+  }
+
+  /**
+   * Human-like typing with variable cadence, authentic typo & self-correction, burst rhythm, and controlled React synchronization
    */
   async humanType(selectorOrEl, text, page = null) {
     const targetPage = this._resolvePage(page);
@@ -427,7 +511,7 @@ export class BrowserManager {
       if (box && targetPage && targetPage.mouse) {
         const offsetX = box.x + box.width * (0.25 + Math.random() * 0.35);
         const offsetY = box.y + box.height * (0.35 + Math.random() * 0.3);
-        await this.humanMouseMove(offsetX, offsetY, targetPage).catch(() => {});
+        await this.humanMouseMove(offsetX, offsetY, targetPage);
         await this.delay(Math.floor(Math.random() * 80) + 40);
         await targetPage.mouse.click(offsetX, offsetY).catch(() => {});
       }
@@ -448,10 +532,23 @@ export class BrowserManager {
       if (targetPage && targetPage.keyboard) {
         const strVal = String(text);
         if (strVal.length <= 40) {
-          // Short answers (numbers, Yes/No): realistic human keystroke intervals
+          // Short answers (numbers, Yes/No): realistic human keystroke intervals with occasional typo fix
           for (let i = 0; i < strVal.length; i++) {
             const char = strVal[i];
-            let delay = Math.floor(Math.random() * 40) + 25;
+            const lowerChar = char.toLowerCase();
+
+            // 2.5% chance of realistic typo on alphabetic letters in words
+            if (strVal.length > 8 && QWERTY_NEIGHBORS[lowerChar] && Math.random() < 0.025) {
+              const neighbors = QWERTY_NEIGHBORS[lowerChar];
+              const wrongChar = neighbors[Math.floor(Math.random() * neighbors.length)];
+              await targetPage.keyboard.type(wrongChar, { delay: 40 }).catch(() => {});
+              // Cognitive realization pause
+              await this.delay(Math.floor(Math.random() * 80) + 140);
+              await targetPage.keyboard.press('Backspace').catch(() => {});
+              await this.delay(65);
+            }
+
+            let delay = Math.floor(Math.random() * 40) + 28;
             if (char === ' ' || char === ',' || char === '.') delay += 90;
             await targetPage.keyboard.type(char, { delay }).catch(() => {});
           }
@@ -459,9 +556,9 @@ export class BrowserManager {
           // Long statements / cover letters: human burst typing
           const chunks = strVal.match(/.{1,4}/g) || [strVal];
           for (const chunk of chunks) {
-            await targetPage.keyboard.type(chunk, { delay: Math.floor(Math.random() * 18) + 12 }).catch(() => {});
+            await targetPage.keyboard.type(chunk, { delay: Math.floor(Math.random() * 18) + 14 }).catch(() => {});
             if (chunk.includes(' ') || chunk.includes('.')) {
-              await this.delay(Math.floor(Math.random() * 50) + 25);
+              await this.delay(Math.floor(Math.random() * 55) + 30);
             }
           }
         }

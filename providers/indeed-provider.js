@@ -199,9 +199,9 @@ export class IndeedProvider extends BaseJobProvider {
         this.log(`🤖 Copilot read full job description (${wordsCount} words). Extracted responsibilities & qualifications.`);
       }
 
-      // Human-like reading scroll and pause
-      await this.browserManager.humanScroll(350, page);
-      await this.browserManager.humanPause(1200, 2200);
+      // Authentic human eye-tracking & job posting reading skim
+      this.log(`Candidate reading job posting and responsibilities for "${job.title}"...`);
+      await this.browserManager.humanReadJobPosting(page, job.title);
 
       // Look for Indeed Apply button
       const applyBtnSelector = '#indeedApplyButton, button[id*="indeedApply"], button.jobsearch-IndeedApplyButton, [data-testid="indeedApplyButton"], button[aria-label*="Apply now" i], a[href*="smartapply.indeed.com"], .indeed-apply-button';
