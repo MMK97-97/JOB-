@@ -1,0 +1,113 @@
+{
+  "personal": {
+    "fullName": "Manoj Kumar Manne",
+    "firstName": "Manoj Kumar",
+    "lastName": "Manne",
+    "email": "manoj.k.manne@gmail.com",
+    "phone": "+1 (309) 621-0588",
+    "rawPhone": "3096210588",
+    "countryCode": "+1",
+    "location": {
+      "city": "Sarasota",
+      "state": "FL",
+      "stateFullName": "Florida",
+      "zip": "34238",
+      "country": "United States",
+      "address": "Sarasota, FL"
+    },
+    "links": {
+      "portfolio": "https://supply-chain-intelligence.manoj-k-manne.workers.dev",
+      "github": "https://github.com/MMK97-97/SUPPLY-CHAIN-INTELLIGENCE",
+      "linkedin": "https://www.linkedin.com/in/manoj-kumar-manne"
+    }
+  },
+  "workAuthorization": {
+    "legallyAuthorizedInUS": true,
+    "requireSponsorship": false,
+    "willingToRelocate": true,
+    "hasDriversLicense": true,
+    "passBackgroundCheck": true,
+    "passDrugScreen": true,
+    "securityClearance": "None"
+  },
+  "compensation": {
+    "expectedSalaryAnnual": 95000,
+    "minimumSalaryAnnual": 85000,
+    "expectedHourlyRate": 48,
+    "salaryCurrency": "USD",
+    "noticePeriodDays": 14
+  },
+  "skillsYearsOfExperience": {
+    "supply chain": 5,
+    "procurement": 5,
+    "inventory management": 5,
+    "inventory planning": 5,
+    "demand planning": 5,
+    "demand forecasting": 5,
+    "inbound logistics": 5,
+    "logistics": 5,
+    "supplier management": 5,
+    "vendor management": 5,
+    "erp": 5,
+    "sap": 4,
+    "excel": 5,
+    "advanced excel": 5,
+    "pivot tables": 5,
+    "vlookup": 5,
+    "power query": 4,
+    "sql": 4,
+    "power bi": 4,
+    "tableau": 4,
+    "data analysis": 5,
+    "3pl": 4,
+    "purchase order": 5,
+    "continuous improvement": 4,
+    "lean six sigma": 2,
+    "python": 2,
+    "javascript": 2
+  },
+  "education": {
+    "highestLevel": "Master's Degree",
+    "degrees": [
+      {
+        "degree": "Master of Science (M.S.)",
+        "major": "Engineering Management",
+        "school": "Trine University",
+        "city": "Detroit",
+        "state": "MI",
+        "graduationYear": 2024
+      },
+      {
+        "degree": "Bachelor of Technology (B.Tech)",
+        "major": "Mechanical Engineering",
+        "school": "PRIST University",
+        "city": "Chennai",
+        "state": "India",
+        "graduationYear": 2018
+      }
+    ]
+  },
+  "certifications": [
+    "ASCM/APICS CSCP (In Progress)",
+    "ASQ Lean Six Sigma Green Belt (In Progress)"
+  ],
+  "eeo": {
+    "gender": "Male",
+    "raceEthnicity": "Asian",
+    "veteranStatus": "I am not a protected veteran",
+    "disabilityStatus": "No, I do not have a disability"
+  },
+  "screeningAnswers": {
+    "sponsorship": "No",
+    "authorized": "Yes",
+    "over_18": "Yes",
+    "background_check": "Yes",
+    "drug_test": "Yes",
+    "remote_ok": "Yes",
+    "commute_ok": "Yes",
+    "relocate": "Yes",
+    "drivers_license": "Yes",
+    "default_experience_years": 5
+  },
+  "coverLetter": "Dear Hiring Team,\n\nI am writing to express my strong interest in this position. With over 5 years of hands-on experience in demand forecasting, inventory planning, ERP operations, procurement, and supplier management across U.S., Canada, and international operations, I have consistently driven operational efficiency, reduced stockouts, and optimized inventory workflows.\n\nIn my recent role at Stark Premium, I managed 900+ SKUs, 80+ vendors, and coordinated ~$1M monthly purchasing with $1M+ inventory under management. Furthermore, I built an AI-enabled Supply Chain Intelligence Platform to automate demand forecasting and reorder analytics. My strong technical background spanning Advanced Excel, SQL, Power BI, and ERP systems allows me to translate complex operational data into actionable business outcomes.\n\nI would welcome the opportunity to discuss how my skill set and proactive approach can contribute to your team's ongoing success.\n\nSincerely,\nManoj Kumar Manne\n+1 (309) 621-0588 | manoj.k.manne@gmail.com"
+}

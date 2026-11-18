@@ -1,0 +1,6 @@
+node_modules/
+data/chrome-profile/
+data/screenshots/*.png
+.env
+npm-debug.log*
+.DS_Store

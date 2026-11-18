@@ -1,0 +1,38 @@
+{
+  "name": "job-applying-agent",
+  "version": "1.0.0",
+  "description": "Autonomous, intelligent job applying agent powered by browser automation, resume matching, and ATS form filling.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "job-agent": "./bin/cli.js"
+  },
+  "scripts": {
+    "start": "node index.js --dashboard",
+    "dashboard": "node index.js --dashboard",
+    "agent": "node index.js --run",
+    "dry-run": "node index.js --run --dry-run",
+    "test-browser": "node scripts/test-browser.js"
+  },
+  "keywords": [
+    "job-agent",
+    "indeed",
+    "automation",
+    "job-application",
+    "puppeteer",
+    "stealth",
+    "resume"
+  ],
+  "author": "Manoj Kumar Manne",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer-core": "^22.12.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.4.5",
+    "chalk": "^5.3.0",
+    "ws": "^8.18.0"
+  }
+}

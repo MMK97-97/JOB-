@@ -1,0 +1,49 @@
+{
+  "targetTitles": [
+    "Supply Chain Manager",
+    "Demand Planner",
+    "Inventory Analyst",
+    "Procurement Specialist",
+    "Supply Chain Analyst",
+    "Materials Planner",
+    "Logistics Coordinator",
+    "Sourcing Specialist",
+    "Purchasing Analyst"
+  ],
+  "locations": [
+    "Sarasota, FL",
+    "Tampa, FL",
+    "Orlando, FL",
+    "Remote"
+  ],
+  "easyApplyOnly": true,
+  "datePosted": "14",
+  "jobType": "fulltime",
+  "remoteOnly": false,
+  "minimumMatchScore": 60,
+  "maxApplicationsPerSession": 25,
+  "dryRun": false,
+  "reviewBeforeSubmit": true,
+  "blacklistCompanies": [
+    "Revature",
+    "CyberCoders",
+    "Staffing 360"
+  ],
+  "negativeKeywords": [
+    "unpaid",
+    "internship",
+    "warehouse worker",
+    "forklift operator",
+    "delivery driver",
+    "class a cdl",
+    "part-time only",
+    "phd required"
+  ],
+  "browser": {
+    "headless": false,
+    "slowMo": 80,
+    "timeout": 30000,
+    "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "userDataDir": "./data/chrome-profile"
+  }
+}
