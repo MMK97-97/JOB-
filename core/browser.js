@@ -49,8 +49,7 @@ export class BrowserManager {
       '--disable-blink-features=AutomationControlled',
       '--window-size=1920,1080',
       '--start-maximized',
-      '--lang=en-US,en',
-      '--disable-features=IsolateOrigins,site-per-process'
+      '--lang=en-US,en'
     ];
 
     try {
@@ -88,7 +87,7 @@ export class BrowserManager {
         });
       };
 
-      // Clean webdriver flags and auto-kill beforeunload popups ("Leave site? Changes you made may not be saved")
+      // Set clean hardware specs (never monkey-patch EventTarget or addEventListener)
       await this.activePage.evaluateOnNewDocument(() => {
         try {
           delete Object.getPrototypeOf(navigator).webdriver;
@@ -98,17 +97,6 @@ export class BrowserManager {
           Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
           Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
           Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        } catch (e) {}
-        try {
-          Object.defineProperty(window, 'onbeforeunload', {
-            get: () => null,
-            set: () => {}
-          });
-          const originalAEL = EventTarget.prototype.addEventListener;
-          EventTarget.prototype.addEventListener = function(type, listener, options) {
-            if (type === 'beforeunload' || type === 'unload') return;
-            return originalAEL.apply(this, arguments);
-          };
         } catch (e) {}
       });
 
@@ -120,19 +108,6 @@ export class BrowserManager {
           const p = await target.page();
           if (p) {
             attachSafeDialogHandler(p);
-            await p.evaluateOnNewDocument(() => {
-              try {
-                Object.defineProperty(window, 'onbeforeunload', {
-                  get: () => null,
-                  set: () => {}
-                });
-                const originalAEL = EventTarget.prototype.addEventListener;
-                EventTarget.prototype.addEventListener = function(type, listener, options) {
-                  if (type === 'beforeunload' || type === 'unload') return;
-                  return originalAEL.apply(this, arguments);
-                };
-              } catch (e) {}
-            }).catch(() => {});
           }
         } catch (e) {}
       });
@@ -191,13 +166,6 @@ export class BrowserManager {
         await page.evaluate(() => {
           try {
             window.onbeforeunload = null;
-            if (window.EventTarget && window.EventTarget.prototype) {
-              const originalAEL = window.EventTarget.prototype.addEventListener;
-              window.EventTarget.prototype.addEventListener = function(type, listener, options) {
-                if (type === 'beforeunload' || type === 'unload') return;
-                return originalAEL.apply(this, arguments);
-              };
-            }
           } catch (e) {}
         }).catch(() => {});
       }

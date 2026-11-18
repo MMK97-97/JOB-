@@ -42,7 +42,16 @@ export class IndeedProvider extends BaseJobProvider {
       const isChallenged = await page.evaluate(() => {
         const title = (document.title || '').toLowerCase();
         const body = (document.body ? document.body.innerText : '').toLowerCase();
-        return title.includes('just a moment') || body.includes('verify you are human') || body.includes('security check');
+        return (
+          title.includes('just a moment') ||
+          title.includes('additional verification') ||
+          title.includes('security check') ||
+          body.includes('verify you are human') ||
+          body.includes('additional verification required') ||
+          body.includes('ray id') ||
+          body.includes('security check') ||
+          document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null
+        );
       });
 
       if (isChallenged) {
@@ -179,6 +188,32 @@ export class IndeedProvider extends BaseJobProvider {
         }
       }
       await this.browserManager.delay(2500);
+
+      // Check if job page hit Cloudflare verification challenge
+      const isChallengedOnApply = await page.evaluate(() => {
+        const title = (document.title || '').toLowerCase();
+        const body = (document.body ? document.body.innerText : '').toLowerCase();
+        return (
+          title.includes('just a moment') ||
+          title.includes('additional verification') ||
+          title.includes('security check') ||
+          body.includes('verify you are human') ||
+          body.includes('additional verification required') ||
+          body.includes('ray id') ||
+          document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null
+        );
+      }).catch(() => false);
+
+      if (isChallengedOnApply) {
+        this.log(`🛡️ Cloudflare "Additional Verification Required" detected for "${job.title}". Resolving Turnstile challenge...`, 'warning');
+        await this.browserManager.takeScreenshot(`turnstile-challenge-${job.jobId}`);
+        const solved = await this.waitForCaptchaResolution(page, page, job, 90, options);
+        if (!solved) {
+          this.log(`⚠️ Could not complete Cloudflare verification for "${job.title}". Skipping to next position.`, 'warning');
+          return this.tracker.recordApplication({ ...job, status: 'SKIPPED', notes: 'Blocked by Cloudflare verification' });
+        }
+        await this.browserManager.delay(3000);
+      }
 
       // Check if job is expired or closed
       const isClosed = await page.evaluate(() => {

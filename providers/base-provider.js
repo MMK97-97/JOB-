@@ -44,17 +44,37 @@ export class BaseJobProvider extends EventEmitter {
         }
       }
 
-      // 2. Cloudflare Turnstile
+      // 2. Cloudflare Turnstile (Physical bounding box targeting on top window)
+      const cfIframe = await page.$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]').catch(() => null);
+      if (cfIframe) {
+        detectedType = 'Cloudflare Turnstile';
+        const box = await cfIframe.boundingBox().catch(() => null);
+        if (box) {
+          // Precise coordinate of the "Verify you are human" checkbox inside the Cloudflare widget:
+          // Checkbox is centered vertically (~32px from top) and ~28px from left edge
+          const clickX = box.x + 28 + (Math.random() * 4);
+          const clickY = box.y + (box.height / 2) + ((Math.random() - 0.5) * 4);
+          this.log('🛡️ Cloudflare Turnstile widget located. Clicking checkbox with trusted CDP pointer event...');
+          await this.browserManager.humanMouseMove(clickX, clickY, page);
+          await this.browserManager.delay(Math.floor(Math.random() * 150) + 150);
+          await page.mouse.click(clickX, clickY).catch(() => {});
+          checkboxClicked = true;
+          await this.browserManager.delay(2500);
+        }
+      }
+
+      // Also check across frames
       for (const f of allFrames) {
         const u = f.url().toLowerCase();
         if (u.includes('challenges.cloudflare.com') || u.includes('turnstile')) {
           detectedType = 'Cloudflare Turnstile';
-          const cfCheckbox = await f.$('input[type="checkbox"], #cf-stage, .ctp-checkbox-label, label').catch(() => null);
-          if (cfCheckbox) {
-            this.log('🛡️ Auto-verifying Cloudflare Turnstile challenge with natural human cursor...');
-            await this.browserManager.humanClick(cfCheckbox, f);
-            checkboxClicked = true;
-            await this.browserManager.delay(2200);
+          if (!checkboxClicked) {
+            const cfCheckbox = await f.$('input[type="checkbox"], #cf-stage, .ctp-checkbox-label, label, span.mark').catch(() => null);
+            if (cfCheckbox) {
+              await this.browserManager.humanClick(cfCheckbox, f);
+              checkboxClicked = true;
+              await this.browserManager.delay(2200);
+            }
           }
         }
       }
@@ -85,7 +105,16 @@ export class BaseJobProvider extends EventEmitter {
           if (document.querySelector('.cf-turnstile, [data-sitekey*="0x4AAAAAA"]')) return 'Cloudflare Turnstile';
           if (document.querySelector('.g-recaptcha, [data-sitekey]')) return 'Google reCAPTCHA';
           if (document.querySelector('.h-captcha')) return 'hCaptcha';
-          if (title.includes('just a moment') || body.includes('verify you are human') || body.includes('security check')) {
+          if (
+            title.includes('just a moment') ||
+            title.includes('additional verification') ||
+            title.includes('security check') ||
+            body.includes('verify you are human') ||
+            body.includes('additional verification required') ||
+            body.includes('ray id') ||
+            body.includes('security check') ||
+            body.includes('cloudflare')
+          ) {
             return 'Cloudflare Security Challenge';
           }
           return null;
@@ -157,14 +186,23 @@ export class BaseJobProvider extends EventEmitter {
         if (checked) return true;
       }
 
-      // 4. Challenge screen vanished on navigation/search
+      // 4. Challenge screen vanished on navigation/search/apply
       const stillChallenged = await page.evaluate(() => {
         const title = (document.title || '').toLowerCase();
         const body = (document.body ? document.body.innerText : '').toLowerCase();
-        return title.includes('just a moment') || body.includes('verify you are human') || body.includes('security check');
+        return (
+          title.includes('just a moment') ||
+          title.includes('additional verification') ||
+          title.includes('security check') ||
+          body.includes('verify you are human') ||
+          body.includes('additional verification required') ||
+          body.includes('ray id') ||
+          body.includes('security check') ||
+          document.querySelector('iframe[src*="challenges.cloudflare.com"]') !== null
+        );
       }).catch(() => false);
 
-      if (!stillChallenged && (page.url().includes('viewjob') || page.url().includes('jobs?') || page.url().includes('smartapply') || page.url().includes('indeedapply') || page.url().includes('linkedin.com'))) {
+      if (!stillChallenged) {
         return true;
       }
 
