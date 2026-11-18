@@ -1,16 +1,28 @@
 {
   "targetTitles": [
     "Supply Chain Manager",
-    "Demand Planner"
+    "Demand Planner",
+    "procurement specialist",
+    "procurement manager",
+    "procurement analyst",
+    "strategic sourcing",
+    "inventory analyst",
+    "supply chain analyst",
+    "material planning"
   ],
   "locations": [
-    "Sarasota, FL"
+    "Sarasota, FL",
+    "Tampa, FL",
+    "Orlando, FL",
+    "Miami, FL",
+    "Pensacola, FL",
+    "Ocala, FL"
   ],
   "easyApplyOnly": true,
   "datePosted": "14",
   "jobType": "fulltime",
   "remoteOnly": false,
-  "minimumMatchScore": 95,
+  "minimumMatchScore": 30,
   "maxApplicationsPerSession": 25,
   "dryRun": false,
   "reviewBeforeSubmit": true,

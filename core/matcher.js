@@ -41,20 +41,41 @@ export class JobMatcher {
 
     // 3. Match calculation
     let matchedKeywords = [];
-    let score = 30; // base score for getting past negative filters
+    let score = 45; // base score for passing negative keyword filters
 
-    // Title relevancy bonus
+    // Target title matches
     const targetTitles = this.criteria.targetTitles || [];
-    const hasTargetTitle = targetTitles.some(t => title.includes(t.toLowerCase()) || t.toLowerCase().includes(title));
-    if (hasTargetTitle) {
-      score += 30;
-      matchedKeywords.push('Target Title Match');
+    let titleMatched = false;
+
+    for (const t of targetTitles) {
+      const tLower = t.toLowerCase().trim();
+      if (tLower && (title.includes(tLower) || tLower.includes(title))) {
+        score += 35;
+        titleMatched = true;
+        matchedKeywords.push(`Target Title: ${t}`);
+        break;
+      }
     }
 
-    // Keyword hits in description or title
+    // Role word match (e.g. Supply Chain, Inventory, Procurement, Planner, Buyer, Sourcing, Logistics)
+    if (!titleMatched) {
+      const coreRoleWords = [
+        'supply chain', 'procurement', 'inventory', 'planner', 'planning',
+        'purchasing', 'buyer', 'logistics', 'sourcing', 'operations', 'materials'
+      ];
+      for (const rw of coreRoleWords) {
+        if (title.includes(rw)) {
+          score += 25;
+          matchedKeywords.push(`Role Match: ${rw}`);
+          break;
+        }
+      }
+    }
+
+    // Keyword hits in full card text
     for (const kw of this.coreKeywords) {
       if (fullText.includes(kw)) {
-        score += 3;
+        score += 5;
         matchedKeywords.push(kw);
       }
     }
@@ -62,7 +83,7 @@ export class JobMatcher {
     // Cap score at 100
     score = Math.min(100, Math.round(score));
 
-    const minScore = this.criteria.minimumMatchScore || 50;
+    const minScore = this.criteria.minimumMatchScore || 40;
     const eligible = score >= minScore;
 
     return {

@@ -135,16 +135,16 @@ export class IndeedProvider extends BaseJobProvider {
       }
 
       // Look for Indeed Apply button
-      const applyBtnSelector = '#indeedApplyButton, button[id*="indeedApply"], button.jobsearch-IndeedApplyButton, button:has-text("Apply now")';
+      const applyBtnSelector = '#indeedApplyButton, button[id*="indeedApply"], button.jobsearch-IndeedApplyButton, [data-testid="indeedApplyButton"], button[aria-label*="Apply now" i], a[href*="smartapply.indeed.com"], .indeed-apply-button';
       let applyButton = await page.$(applyBtnSelector);
 
       if (!applyButton) {
-        // Fallback search by text
-        const buttons = await page.$$('button');
-        for (const btn of buttons) {
-          const text = await page.evaluate(el => el.innerText.trim().toLowerCase(), btn);
-          if (text.includes('apply now') || text.includes('easily apply')) {
-            applyButton = btn;
+        // Fallback search across all clickable elements
+        const clickables = await page.$$('button, a, div[role="button"]');
+        for (const el of clickables) {
+          const text = await page.evaluate(node => (node.innerText || node.getAttribute('aria-label') || '').trim().toLowerCase(), el);
+          if (text.includes('apply now') || text.includes('easily apply') || text.includes('apply on company site') === false && text.includes('apply')) {
+            applyButton = el;
             break;
           }
         }
@@ -159,10 +159,32 @@ export class IndeedProvider extends BaseJobProvider {
         });
       }
 
+      // Check if clicking opens a new popup window
+      const newTargetPromise = new Promise(resolve => {
+        const handler = async (target) => {
+          try {
+            if (target.opener() === page.target()) {
+              this.browserManager.browser.off('targetcreated', handler);
+              const p = await target.page();
+              resolve(p);
+            }
+          } catch (e) {
+            resolve(null);
+          }
+        };
+        this.browserManager.browser.on('targetcreated', handler);
+        setTimeout(() => {
+          this.browserManager.browser.off('targetcreated', handler);
+          resolve(null);
+        }, 4000);
+      });
+
       // Click Apply
       this.log('Clicking "Apply now" button...');
       await applyButton.click();
-      await this.browserManager.delay(3000);
+      const popupPage = await newTargetPromise;
+      const applyPage = popupPage || page;
+      await this.browserManager.delay(3500);
 
       // Multi-step modal navigator (typically up to 10 steps max)
       let maxSteps = 12;
@@ -173,16 +195,16 @@ export class IndeedProvider extends BaseJobProvider {
         step++;
         this.log(`Processing application step ${step}...`);
 
-        // Check active application context: could be main page or iframe
+        // Check active application context: could be applyPage, popup, or iframe
         let frame = null;
-        for (const f of page.frames()) {
+        for (const f of applyPage.frames()) {
           const fUrl = f.url().toLowerCase();
           if (fUrl.includes('smartapply') || fUrl.includes('indeedapply') || fUrl.includes('apply')) {
             frame = f;
             break;
           }
         }
-        const ctx = frame || page;
+        const ctx = frame || applyPage;
 
         // Take step screenshot
         const stepScreenshot = await this.browserManager.takeScreenshot(`step-${step}`);
@@ -201,7 +223,7 @@ export class IndeedProvider extends BaseJobProvider {
         await this.fillEEOFields(ctx, profile);
 
         // 5. Look for Next / Continue / Review / Submit button
-        const actionResult = await this.handleNavigationButtons(ctx, page, isDryRun, job);
+        const actionResult = await this.handleNavigationButtons(ctx, applyPage, isDryRun, job);
 
         if (actionResult.completed) {
           submitted = actionResult.submitted;
@@ -209,6 +231,10 @@ export class IndeedProvider extends BaseJobProvider {
         }
 
         await this.browserManager.delay(2000);
+      }
+
+      if (popupPage && !popupPage.isClosed()) {
+        await popupPage.close().catch(() => {});
       }
 
       const finalScreenshot = await this.browserManager.takeScreenshot(`finish-${job.jobId}`);

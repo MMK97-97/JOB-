@@ -36,10 +36,13 @@ export class ApplicationTracker {
 
   isApplied(jobId, jobUrl, title, company) {
     return this.applications.some(app => {
-      if (jobId && app.jobId === jobId) return true;
-      if (jobUrl && app.url === jobUrl) return true;
-      if (title && company && app.title.toLowerCase() === title.toLowerCase() && app.company.toLowerCase() === company.toLowerCase()) {
-        return true;
+      // Only consider as already applied if it was actually SUBMITTED or DRY_RUN_COMPLETED
+      if (app.status === 'SUBMITTED' || app.status === 'DRY_RUN_COMPLETED') {
+        if (jobId && app.jobId === jobId) return true;
+        if (jobUrl && app.url === jobUrl) return true;
+        if (title && company && app.title.toLowerCase() === title.toLowerCase() && app.company.toLowerCase() === company.toLowerCase()) {
+          return true;
+        }
       }
       return false;
     });
