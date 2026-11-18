@@ -167,6 +167,26 @@ function appendLog(message, type = 'info') {
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 
+function showToast(message, type = 'success') {
+  let toast = document.getElementById('globalToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'globalToast';
+    document.body.appendChild(toast);
+  }
+
+  const bg = type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-rose-600 border-rose-500 text-white';
+  const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+
+  toast.className = `fixed bottom-6 right-6 z-50 flex items-center space-x-3 px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold transition-all transform duration-300 border ${bg} translate-y-0 opacity-100`;
+  toast.innerHTML = `<i class="fa-solid ${icon} text-sm"></i><span>${message}</span>`;
+
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.classList.add('translate-y-4', 'opacity-0');
+  }, 4000);
+}
+
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -178,10 +198,12 @@ async function loadData() {
     let profRes, critRes, appRes;
 
     if (isCloud) {
-      // Load static configurations for GitHub Pages preview
+      const cachedProf = localStorage.getItem('job_agent_profile');
+      const cachedCrit = localStorage.getItem('job_agent_criteria');
+
       [profRes, critRes, appRes] = await Promise.all([
-        fetch('config/profile.json').then(r => r.json()).catch(() => null),
-        fetch('config/search-criteria.json').then(r => r.json()).catch(() => null),
+        cachedProf ? Promise.resolve(JSON.parse(cachedProf)) : fetch('config/profile.json').then(r => r.json()).catch(() => null),
+        cachedCrit ? Promise.resolve(JSON.parse(cachedCrit)) : fetch('config/search-criteria.json').then(r => r.json()).catch(() => null),
         fetch('data/applications.json').then(r => r.json()).catch(() => [])
       ]);
       appRes = { applications: Array.isArray(appRes) ? appRes : [], stats: { total: 0, submitted: 0, dryRun: 0, skipped: 0 } };
@@ -352,20 +374,24 @@ function bindEvents() {
 
   // Save Profile
   document.getElementById('btnSaveProfile').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSaveProfile');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+
     const updated = {
       personal: {
-        ...currentProfile.personal,
+        ...(currentProfile?.personal || {}),
         fullName: document.getElementById('profFullName').value,
         email: document.getElementById('profEmail').value,
         phone: document.getElementById('profPhone').value,
         location: {
-          ...currentProfile.personal.location,
+          ...(currentProfile?.personal?.location || {}),
           city: document.getElementById('profCity').value,
           state: document.getElementById('profState').value
         }
       },
       workAuthorization: {
-        ...currentProfile.workAuthorization,
+        ...(currentProfile?.workAuthorization || {}),
         legallyAuthorizedInUS: document.getElementById('profAuthUS').value === 'true',
         requireSponsorship: document.getElementById('profSponsorship').value === 'true',
         passBackgroundCheck: document.getElementById('profBackground').value === 'true',
@@ -373,11 +399,26 @@ function bindEvents() {
         hasDriversLicense: document.getElementById('profDriversLic').value === 'true'
       },
       compensation: {
-        ...currentProfile.compensation,
+        ...(currentProfile?.compensation || {}),
         expectedSalaryAnnual: parseInt(document.getElementById('profSalary').value, 10) || 95000
       },
       coverLetter: document.getElementById('profCoverLetter').value
     };
+
+    const isCloud = window.location.hostname.includes('github.io');
+    localStorage.setItem('job_agent_profile', JSON.stringify(updated));
+    currentProfile = updated;
+
+    if (isCloud) {
+      btn.className = 'px-3 py-1 bg-emerald-600 rounded text-xs text-white font-medium transition';
+      btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Saved!';
+      showToast('Candidate profile saved to browser storage!');
+      setTimeout(() => {
+        btn.className = 'px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white font-medium transition';
+        btn.innerHTML = originalText;
+      }, 2500);
+      return;
+    }
 
     try {
       const res = await fetch('/api/profile', {
@@ -386,18 +427,31 @@ function bindEvents() {
         body: JSON.stringify(updated)
       });
       if (res.ok) {
-        alert('Profile and ATS answers saved successfully!');
+        btn.className = 'px-3 py-1 bg-emerald-600 rounded text-xs text-white font-medium transition';
+        btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Saved!';
+        showToast('Profile and ATS answers saved to local config!');
         loadData();
+      } else {
+        showToast('Server returned error saving profile', 'error');
       }
     } catch (e) {
-      alert('Error saving profile: ' + e.message);
+      showToast('Error connecting to local server: ' + e.message, 'error');
+    } finally {
+      setTimeout(() => {
+        btn.className = 'px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white font-medium transition';
+        btn.innerHTML = originalText;
+      }, 2500);
     }
   });
 
   // Save Criteria
   document.getElementById('btnSaveCriteria').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSaveCriteria');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
+
     const updated = {
-      ...currentCriteria,
+      ...(currentCriteria || {}),
       targetTitles: document.getElementById('criteriaTitles').value.split('\n').map(s => s.trim()).filter(Boolean),
       locations: document.getElementById('criteriaLocations').value.split('\n').map(s => s.trim()).filter(Boolean),
       blacklistCompanies: document.getElementById('criteriaBlacklist').value.split('\n').map(s => s.trim()).filter(Boolean),
@@ -406,6 +460,21 @@ function bindEvents() {
       easyApplyOnly: document.getElementById('criteriaEasyApplyOnly').checked
     };
 
+    const isCloud = window.location.hostname.includes('github.io');
+    localStorage.setItem('job_agent_criteria', JSON.stringify(updated));
+    currentCriteria = updated;
+
+    if (isCloud) {
+      btn.className = 'px-4 py-2 bg-emerald-600 rounded-lg text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition';
+      btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Saved!';
+      showToast('Search criteria saved to browser storage!');
+      setTimeout(() => {
+        btn.className = 'px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-blue-600/20 transition';
+        btn.innerHTML = originalText;
+      }, 2500);
+      return;
+    }
+
     try {
       const res = await fetch('/api/criteria', {
         method: 'POST',
@@ -413,11 +482,20 @@ function bindEvents() {
         body: JSON.stringify(updated)
       });
       if (res.ok) {
-        alert('Search criteria updated successfully!');
+        btn.className = 'px-4 py-2 bg-emerald-600 rounded-lg text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition';
+        btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Saved!';
+        showToast('Search criteria saved to local disk!');
         loadData();
+      } else {
+        showToast('Server error while saving criteria', 'error');
       }
     } catch (e) {
-      alert('Error saving criteria: ' + e.message);
+      showToast('Error connecting to local server: ' + e.message, 'error');
+    } finally {
+      setTimeout(() => {
+        btn.className = 'px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-blue-600/20 transition';
+        btn.innerHTML = originalText;
+      }, 2500);
     }
   });
 
