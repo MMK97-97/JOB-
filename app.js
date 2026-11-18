@@ -4,9 +4,34 @@ let currentProfile = null;
 let currentCriteria = null;
 let applications = [];
 
+const SUPPLY_CHAIN_ROLES = [
+  "Supply Chain Manager", "Supply Chain Analyst", "Supply Chain Specialist", "Supply Chain Coordinator", "Supply Chain Operations",
+  "Demand Planner", "Demand Planning Analyst", "Demand & Inventory Planner", "S&OP Specialist",
+  "Inventory Analyst", "Inventory Planner", "Inventory Specialist", "Inventory Control Specialist",
+  "Procurement Specialist", "Procurement Manager", "Procurement Analyst", "Strategic Sourcing Specialist", "Sourcing Manager",
+  "Purchasing Agent", "Purchasing Manager", "Purchasing Specialist", "Buyer", "Senior Buyer",
+  "Materials Planner", "Materials Manager", "Logistics Coordinator", "Logistics Analyst", "Logistics Manager", "Inbound Logistics Specialist", "Operations Analyst"
+];
+
+const USA_STATES = [
+  "United States", "Remote",
+  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
+  "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
+  "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan",
+  "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire",
+  "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+  "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia",
+  "Wisconsin", "Wyoming", "District of Columbia"
+];
+
+let selectedRoles = new Set();
+let selectedLocations = new Set();
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initWebSocket();
+  initMultiSelectFilters();
   loadData();
   bindEvents();
 });
@@ -246,14 +271,253 @@ function populateProfile(profile) {
   document.getElementById('profDriversLic').value = String(profile.workAuthorization.hasDriversLicense);
 }
 
+function initMultiSelectFilters() {
+  const btnRole = document.getElementById('btnRoleDropdown');
+  const menuRole = document.getElementById('roleDropdownMenu');
+  const btnCloseRole = document.getElementById('btnCloseRoleDropdown');
+  const searchRole = document.getElementById('roleSearchInput');
+  const btnSelectAllRoles = document.getElementById('btnSelectAllRoles');
+  const btnClearAllRoles = document.getElementById('btnClearAllRoles');
+
+  const btnLoc = document.getElementById('btnLocationDropdown');
+  const menuLoc = document.getElementById('locationDropdownMenu');
+  const btnCloseLoc = document.getElementById('btnCloseLocationDropdown');
+  const searchLoc = document.getElementById('locationSearchInput');
+  const btnSelectAllStates = document.getElementById('btnSelectAllStates');
+  const btnSelectRemote = document.getElementById('btnSelectRemoteOnly');
+  const btnClearAllLoc = document.getElementById('btnClearAllLocations');
+
+  // Toggle Role Menu
+  btnRole.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menuRole.classList.toggle('hidden');
+    menuLoc.classList.add('hidden');
+    if (!menuRole.classList.contains('hidden')) searchRole.focus();
+  });
+
+  // Toggle Location Menu
+  btnLoc.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menuLoc.classList.toggle('hidden');
+    menuRole.classList.add('hidden');
+    if (!menuLoc.classList.contains('hidden')) searchLoc.focus();
+  });
+
+  // Close buttons (Done)
+  btnCloseRole.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menuRole.classList.add('hidden');
+  });
+
+  btnCloseLoc.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menuLoc.classList.add('hidden');
+  });
+
+  // Close on click outside
+  document.addEventListener('click', (e) => {
+    if (!menuRole.contains(e.target) && !btnRole.contains(e.target)) {
+      menuRole.classList.add('hidden');
+    }
+    if (!menuLoc.contains(e.target) && !btnLoc.contains(e.target)) {
+      menuLoc.classList.add('hidden');
+    }
+  });
+
+  // Prevent click inside menu from closing
+  menuRole.addEventListener('click', (e) => e.stopPropagation());
+  menuLoc.addEventListener('click', (e) => e.stopPropagation());
+
+  // Role Search
+  searchRole.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.role-check-item').forEach(item => {
+      const text = item.getAttribute('data-name').toLowerCase();
+      item.style.display = text.includes(q) ? 'flex' : 'none';
+    });
+  });
+
+  // Location Search
+  searchLoc.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.loc-check-item').forEach(item => {
+      const text = item.getAttribute('data-name').toLowerCase();
+      item.style.display = text.includes(q) ? 'flex' : 'none';
+    });
+  });
+
+  // Select All Roles
+  btnSelectAllRoles.addEventListener('click', () => {
+    SUPPLY_CHAIN_ROLES.forEach(r => selectedRoles.add(r));
+    renderRolesCheckboxes();
+    updateRoleChips();
+  });
+
+  // Clear All Roles
+  btnClearAllRoles.addEventListener('click', () => {
+    selectedRoles.clear();
+    renderRolesCheckboxes();
+    updateRoleChips();
+  });
+
+  // Select All States
+  btnSelectAllStates.addEventListener('click', () => {
+    USA_STATES.forEach(s => selectedLocations.add(s));
+    renderLocationsCheckboxes();
+    updateLocationChips();
+  });
+
+  // Select Remote Only
+  btnSelectRemote.addEventListener('click', () => {
+    selectedLocations.clear();
+    selectedLocations.add('Remote');
+    selectedLocations.add('United States');
+    renderLocationsCheckboxes();
+    updateLocationChips();
+  });
+
+  // Clear All Locations
+  btnClearAllLoc.addEventListener('click', () => {
+    selectedLocations.clear();
+    renderLocationsCheckboxes();
+    updateLocationChips();
+  });
+}
+
+function renderRolesCheckboxes() {
+  const container = document.getElementById('rolesCheckboxContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  SUPPLY_CHAIN_ROLES.forEach(role => {
+    const isChecked = selectedRoles.has(role);
+    const row = document.createElement('label');
+    row.className = 'role-check-item flex items-center space-x-2 p-1.5 rounded hover:bg-slate-800/80 cursor-pointer text-slate-300 text-xs select-none';
+    row.setAttribute('data-name', role);
+    row.innerHTML = `
+      <input type="checkbox" value="${escapeHtml(role)}" ${isChecked ? 'checked' : ''} class="w-3.5 h-3.5 rounded text-blue-600 bg-slate-950 border-slate-700 focus:ring-blue-500">
+      <span class="truncate">${escapeHtml(role)}</span>
+    `;
+
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        selectedRoles.add(role);
+      } else {
+        selectedRoles.delete(role);
+      }
+      updateRoleChips();
+    });
+
+    container.appendChild(row);
+  });
+}
+
+function renderLocationsCheckboxes() {
+  const container = document.getElementById('locationsCheckboxContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  USA_STATES.forEach(loc => {
+    const isChecked = selectedLocations.has(loc);
+    const row = document.createElement('label');
+    row.className = 'loc-check-item flex items-center space-x-2 p-1.5 rounded hover:bg-slate-800/80 cursor-pointer text-slate-300 text-xs select-none';
+    row.setAttribute('data-name', loc);
+    row.innerHTML = `
+      <input type="checkbox" value="${escapeHtml(loc)}" ${isChecked ? 'checked' : ''} class="w-3.5 h-3.5 rounded text-indigo-600 bg-slate-950 border-slate-700 focus:ring-indigo-500">
+      <span class="truncate">${escapeHtml(loc)}</span>
+    `;
+
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        selectedLocations.add(loc);
+      } else {
+        selectedLocations.delete(loc);
+      }
+      updateLocationChips();
+    });
+
+    container.appendChild(row);
+  });
+}
+
+function updateRoleChips() {
+  const chipsContainer = document.getElementById('roleChipsContainer');
+  const countBadge = document.getElementById('roleCountBadge');
+  const selectedText = document.getElementById('roleSelectedText');
+  const hiddenTextarea = document.getElementById('criteriaTitles');
+
+  const count = selectedRoles.size;
+  countBadge.textContent = `${count} selected`;
+  selectedText.textContent = count === 0 ? 'Select Supply Chain Roles...' : (count === SUPPLY_CHAIN_ROLES.length ? 'All Supply Chain Roles Selected' : `${count} Roles Selected`);
+  hiddenTextarea.value = Array.from(selectedRoles).join('\n');
+
+  chipsContainer.innerHTML = '';
+  selectedRoles.forEach(role => {
+    const chip = document.createElement('span');
+    chip.className = 'inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px]';
+    chip.innerHTML = `
+      <span class="truncate max-w-[130px]">${escapeHtml(role)}</span>
+      <button type="button" class="text-blue-400 hover:text-white ml-1">&times;</button>
+    `;
+    chip.querySelector('button').addEventListener('click', () => {
+      selectedRoles.delete(role);
+      renderRolesCheckboxes();
+      updateRoleChips();
+    });
+    chipsContainer.appendChild(chip);
+  });
+}
+
+function updateLocationChips() {
+  const chipsContainer = document.getElementById('locationChipsContainer');
+  const countBadge = document.getElementById('locationCountBadge');
+  const selectedText = document.getElementById('locationSelectedText');
+  const hiddenTextarea = document.getElementById('criteriaLocations');
+
+  const count = selectedLocations.size;
+  countBadge.textContent = `${count} selected`;
+  selectedText.textContent = count === 0 ? 'Select USA States / Remote...' : (count === USA_STATES.length ? 'All USA States Selected (Nationwide)' : `${count} Locations Selected`);
+  hiddenTextarea.value = Array.from(selectedLocations).join('\n');
+
+  chipsContainer.innerHTML = '';
+  selectedLocations.forEach(loc => {
+    const chip = document.createElement('span');
+    chip.className = 'inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-[10px]';
+    chip.innerHTML = `
+      <span class="truncate max-w-[120px]">${escapeHtml(loc)}</span>
+      <button type="button" class="text-indigo-400 hover:text-white ml-1">&times;</button>
+    `;
+    chip.querySelector('button').addEventListener('click', () => {
+      selectedLocations.delete(loc);
+      renderLocationsCheckboxes();
+      updateLocationChips();
+    });
+    chipsContainer.appendChild(chip);
+  });
+}
+
 function populateCriteria(criteria) {
   if (!criteria) return;
-  document.getElementById('criteriaTitles').value = (criteria.targetTitles || []).join('\n');
-  document.getElementById('criteriaLocations').value = (criteria.locations || []).join('\n');
+
+  selectedRoles = new Set((criteria.targetTitles || []).filter(Boolean));
+  if (selectedRoles.size === 0) {
+    SUPPLY_CHAIN_ROLES.forEach(r => selectedRoles.add(r));
+  }
+
+  selectedLocations = new Set((criteria.locations || []).filter(Boolean));
+  if (selectedLocations.size === 0) {
+    USA_STATES.forEach(s => selectedLocations.add(s));
+  }
+
+  renderRolesCheckboxes();
+  renderLocationsCheckboxes();
+  updateRoleChips();
+  updateLocationChips();
+
   document.getElementById('criteriaBlacklist').value = (criteria.blacklistCompanies || []).join('\n');
   document.getElementById('criteriaNegative').value = (criteria.negativeKeywords || []).join('\n');
-  document.getElementById('criteriaMinScore').value = criteria.minimumMatchScore || 60;
-  document.getElementById('criteriaMinScoreVal').textContent = `${criteria.minimumMatchScore || 60}%`;
+  document.getElementById('criteriaMinScore').value = criteria.minimumMatchScore || 40;
+  document.getElementById('criteriaMinScoreVal').textContent = `${criteria.minimumMatchScore || 40}%`;
   document.getElementById('criteriaEasyApplyOnly').checked = criteria.easyApplyOnly ?? true;
   document.getElementById('checkDryRun').checked = criteria.dryRun ?? false;
 }
@@ -446,17 +710,29 @@ function bindEvents() {
 
   // Save Criteria
   document.getElementById('btnSaveCriteria').addEventListener('click', async () => {
+    // Automatically close open dropdown popups
+    document.getElementById('roleDropdownMenu')?.classList.add('hidden');
+    document.getElementById('locationDropdownMenu')?.classList.add('hidden');
+
     const btn = document.getElementById('btnSaveCriteria');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
 
+    const titles = Array.from(selectedRoles).length > 0
+      ? Array.from(selectedRoles)
+      : document.getElementById('criteriaTitles').value.split('\n').map(s => s.trim()).filter(Boolean);
+
+    const locs = Array.from(selectedLocations).length > 0
+      ? Array.from(selectedLocations)
+      : document.getElementById('criteriaLocations').value.split('\n').map(s => s.trim()).filter(Boolean);
+
     const updated = {
       ...(currentCriteria || {}),
-      targetTitles: document.getElementById('criteriaTitles').value.split('\n').map(s => s.trim()).filter(Boolean),
-      locations: document.getElementById('criteriaLocations').value.split('\n').map(s => s.trim()).filter(Boolean),
+      targetTitles: titles,
+      locations: locs,
       blacklistCompanies: document.getElementById('criteriaBlacklist').value.split('\n').map(s => s.trim()).filter(Boolean),
       negativeKeywords: document.getElementById('criteriaNegative').value.split('\n').map(s => s.trim()).filter(Boolean),
-      minimumMatchScore: parseInt(document.getElementById('criteriaMinScore').value, 10) || 60,
+      minimumMatchScore: parseInt(document.getElementById('criteriaMinScore').value, 10) || 40,
       easyApplyOnly: document.getElementById('criteriaEasyApplyOnly').checked
     };
 

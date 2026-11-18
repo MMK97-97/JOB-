@@ -134,6 +134,18 @@ export class IndeedProvider extends BaseJobProvider {
         return this.tracker.recordApplication({ ...job, status: 'SKIPPED', notes: 'Job posting expired' });
       }
 
+      // Copilot reads the entire job description from the page
+      const jobDescription = await page.evaluate(() => {
+        const descEl = document.querySelector('#jobDescriptionText, .jobsearch-jobDescriptionText, div[id*="jobDescription"], .jobsearch-ViewJobLayout-jobDisplay');
+        return descEl ? descEl.innerText.trim() : '';
+      });
+
+      if (jobDescription) {
+        job.description = jobDescription;
+        const wordsCount = jobDescription.split(/\s+/).length;
+        this.log(`🤖 Copilot read full job description (${wordsCount} words). Extracted responsibilities & qualifications.`);
+      }
+
       // Look for Indeed Apply button
       const applyBtnSelector = '#indeedApplyButton, button[id*="indeedApply"], button.jobsearch-IndeedApplyButton, [data-testid="indeedApplyButton"], button[aria-label*="Apply now" i], a[href*="smartapply.indeed.com"], .indeed-apply-button';
       let applyButton = await page.$(applyBtnSelector);
@@ -401,15 +413,25 @@ export class IndeedProvider extends BaseJobProvider {
 
   async fillEEOFields(ctx, profile) {
     try {
-      // Look for select or radio options for gender, race, veteran, disability
+      // 1. Handle EEO dropdown selects
       const selects = await ctx.$$('select');
       for (const select of selects) {
         const text = await ctx.evaluate(el => {
-          const label = el.closest('div')?.innerText || '';
-          return label.toLowerCase();
+          const container = el.closest('div, fieldset') || el.parentElement;
+          return (container ? container.innerText : '').toLowerCase();
         }, select);
 
-        if (text.includes('gender')) {
+        if (text.includes('hispanic') || text.includes('latino')) {
+          await ctx.evaluate((el) => {
+            for (const opt of el.options) {
+              if (opt.text.toLowerCase().startsWith('no') || opt.text.toLowerCase().includes('not hispanic')) {
+                el.value = opt.value;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                break;
+              }
+            }
+          }, select);
+        } else if (text.includes('gender') || text.includes('sex')) {
           await ctx.evaluate((el, gender) => {
             for (const opt of el.options) {
               if (opt.text.toLowerCase().includes(gender.toLowerCase())) {
@@ -419,10 +441,20 @@ export class IndeedProvider extends BaseJobProvider {
               }
             }
           }, select, profile.eeo.gender);
+        } else if (text.includes('race') || text.includes('ethnicity')) {
+          await ctx.evaluate((el, race) => {
+            for (const opt of el.options) {
+              if (opt.text.toLowerCase().includes(race.toLowerCase())) {
+                el.value = opt.value;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                break;
+              }
+            }
+          }, select, profile.eeo.raceEthnicity);
         } else if (text.includes('veteran')) {
           await ctx.evaluate((el) => {
             for (const opt of el.options) {
-              if (opt.text.toLowerCase().includes('not a protected veteran') || opt.text.toLowerCase().includes('not a veteran')) {
+              if (opt.text.toLowerCase().includes('not a protected veteran') || opt.text.toLowerCase().includes('not a veteran') || opt.text.toLowerCase() === 'no') {
                 el.value = opt.value;
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 break;
@@ -432,7 +464,7 @@ export class IndeedProvider extends BaseJobProvider {
         } else if (text.includes('disability')) {
           await ctx.evaluate((el) => {
             for (const opt of el.options) {
-              if (opt.text.toLowerCase().includes('no, i do not') || opt.text.toLowerCase().includes('no')) {
+              if (opt.text.toLowerCase().includes('no, i do not') || opt.text.toLowerCase().includes('no disability') || opt.text.toLowerCase() === 'no') {
                 el.value = opt.value;
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 break;
@@ -441,8 +473,23 @@ export class IndeedProvider extends BaseJobProvider {
           }, select);
         }
       }
+
+      // 2. Handle EEO radio buttons and labels
+      const labels = await ctx.$$('label');
+      for (const lbl of labels) {
+        const text = await ctx.evaluate(el => el.innerText.trim().toLowerCase(), lbl);
+        if (
+          text === 'male' ||
+          text.includes('asian') ||
+          text.includes('not a protected veteran') ||
+          text.includes('no, i do not have a disability') ||
+          text.includes('not hispanic')
+        ) {
+          await lbl.click().catch(() => {});
+        }
+      }
     } catch (e) {
-      // EEO not present
+      // EEO fields not present
     }
   }
 

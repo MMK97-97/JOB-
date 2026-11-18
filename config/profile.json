@@ -93,9 +93,12 @@
   ],
   "eeo": {
     "gender": "Male",
+    "pronouns": "He/Him",
     "raceEthnicity": "Asian",
+    "hispanicLatino": "No",
     "veteranStatus": "I am not a protected veteran",
-    "disabilityStatus": "No, I do not have a disability"
+    "disabilityStatus": "No, I do not have a disability",
+    "lgbtq": "Decline to specify"
   },
   "screeningAnswers": {
     "sponsorship": "No",

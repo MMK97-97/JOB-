@@ -115,18 +115,71 @@ export class ProfileManager {
       return '2 weeks';
     }
 
-    // 6. EEO & Diversity questions
-    if (q.includes('gender')) {
+    // 6. EEO & Demographic questions
+    if (q.includes('hispanic') || q.includes('latino')) {
+      if (options.length > 0) {
+        const noOpt = options.find(o => o.toLowerCase().startsWith('no') || o.toLowerCase().includes('not hispanic'));
+        if (noOpt) return noOpt;
+      }
+      return 'No';
+    }
+
+    if (q.includes('gender') || q.includes('sex')) {
+      if (options.length > 0) {
+        const maleOpt = options.find(o => o.toLowerCase() === 'male' || o.toLowerCase().includes('man'));
+        if (maleOpt) return maleOpt;
+      }
       return this.profile.eeo.gender;
     }
+
+    if (q.includes('pronoun')) {
+      if (options.length > 0) {
+        const heOpt = options.find(o => o.toLowerCase().includes('he/him') || o.toLowerCase().includes('he / him'));
+        if (heOpt) return heOpt;
+      }
+      return this.profile.eeo.pronouns || 'He/Him';
+    }
+
     if (q.includes('race') || q.includes('ethnicity')) {
+      if (options.length > 0) {
+        const asianOpt = options.find(o => o.toLowerCase().includes('asian'));
+        if (asianOpt) return asianOpt;
+      }
       return this.profile.eeo.raceEthnicity;
     }
+
     if (q.includes('veteran')) {
+      if (options.length > 0) {
+        const notVet = options.find(o =>
+          o.toLowerCase().includes('not a protected veteran') ||
+          o.toLowerCase().includes('not a veteran') ||
+          o.toLowerCase().includes('i am not') ||
+          o.toLowerCase() === 'no'
+        );
+        if (notVet) return notVet;
+      }
       return this.profile.eeo.veteranStatus;
     }
+
     if (q.includes('disability')) {
+      if (options.length > 0) {
+        const noDis = options.find(o =>
+          o.toLowerCase().includes('no, i do not') ||
+          o.toLowerCase().includes('no disability') ||
+          o.toLowerCase().includes('not have a disability') ||
+          o.toLowerCase() === 'no'
+        );
+        if (noDis) return noDis;
+      }
       return this.profile.eeo.disabilityStatus;
+    }
+
+    if (q.includes('lgbt') || q.includes('sexual orientation')) {
+      if (options.length > 0) {
+        const declineOpt = options.find(o => o.toLowerCase().includes('decline') || o.toLowerCase().includes('prefer not'));
+        if (declineOpt) return declineOpt;
+      }
+      return 'Decline to specify';
     }
 
     // 7. General Yes/No default heuristic
