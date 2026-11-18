@@ -147,6 +147,16 @@ function handleAgentEvent(event, data) {
       hideQuestionPromptModal();
       loadData();
       break;
+
+    case 'captcha-challenge':
+      appendLog(`🛡️ Human verification challenge detected (${data.type}). Please complete it in Chrome.`, 'warning');
+      showCaptchaModal(data);
+      break;
+
+    case 'captcha-resolved':
+      hideCaptchaModal();
+      appendLog(`✅ Verification completed (${data.type})! Agent resuming application.`, 'info');
+      break;
   }
 }
 
@@ -369,6 +379,65 @@ function showQuestionPromptModal(data) {
 function hideQuestionPromptModal() {
   currentPendingQuestion = null;
   const modal = document.getElementById('modalQuestionPrompt');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function playAlertChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.setValueAtTime(880, now + 0.15); // A5
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  } catch (e) {}
+}
+
+let captchaTimerInterval = null;
+
+function showCaptchaModal(data) {
+  playAlertChime();
+  const modal = document.getElementById('modalCaptchaPrompt');
+  if (!modal) return;
+
+  const jobInfo = data.job
+    ? `Applying for "${data.job.title}" at "${data.job.company}"`
+    : 'Active Target Application';
+  document.getElementById('captchaJobSubtitle').textContent = jobInfo;
+  document.getElementById('captchaTypeName').textContent = data.type || 'Google reCAPTCHA / Verification Challenge';
+
+  let remaining = data.maxWaitSeconds || 120;
+  const timerEl = document.getElementById('captchaTimerText');
+  timerEl.textContent = `Waiting for verification (${remaining}s remaining)...`;
+
+  if (captchaTimerInterval) clearInterval(captchaTimerInterval);
+  captchaTimerInterval = setInterval(() => {
+    remaining--;
+    if (remaining > 0) {
+      timerEl.textContent = `Waiting for verification (${remaining}s remaining)...`;
+    } else {
+      timerEl.textContent = 'Timed out waiting for verification.';
+      clearInterval(captchaTimerInterval);
+    }
+  }, 1000);
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function hideCaptchaModal() {
+  if (captchaTimerInterval) clearInterval(captchaTimerInterval);
+  const modal = document.getElementById('modalCaptchaPrompt');
   if (modal) {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
@@ -1014,6 +1083,19 @@ function bindEvents() {
       alert('Error sending answer: ' + e.message);
     }
   });
+
+  // CAPTCHA completed button
+  const btnCaptcha = document.getElementById('btnCaptchaSolved');
+  if (btnCaptcha) {
+    btnCaptcha.addEventListener('click', () => {
+      btnCaptcha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Checking Verification...</span>';
+      setTimeout(() => {
+        btnCaptcha.innerHTML = '<i class="fa-solid fa-check-double"></i><span>I\'ve Completed Verification</span>';
+        hideCaptchaModal();
+        showToast('Checking verification status in Chrome...');
+      }, 1000);
+    });
+  }
 
   // Add New Custom Question manually
   document.getElementById('btnAddNewCustomQuestion').addEventListener('click', async () => {

@@ -795,6 +795,53 @@
     </div>
   </div>
 
+  <!-- Interactive Human-in-the-Loop CAPTCHA Modal -->
+  <div id="modalCaptchaPrompt" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-500/50 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 relative animate-fade-in">
+      <div class="flex items-start space-x-3 text-amber-400">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-lg shrink-0">
+          <i class="fa-solid fa-shield-halved text-amber-400"></i>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+            <span>Human Verification Required</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">Action Required</span>
+          </h3>
+          <p id="captchaJobSubtitle" class="text-xs text-slate-400 mt-0.5">Verification challenge on active job application</p>
+        </div>
+      </div>
+
+      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+        <div class="flex items-center space-x-2 text-amber-300 text-xs font-semibold">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span id="captchaTypeName">Google reCAPTCHA / Verification</span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          The job portal presented a human verification challenge. The agent attempted initial auto-verification and has brought Chrome to the front. Please complete the verification puzzle in Chrome.
+        </p>
+      </div>
+
+      <div class="p-3 rounded-lg bg-blue-950/40 border border-blue-500/30 flex items-center space-x-3">
+        <span class="relative flex h-3 w-3 shrink-0">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+        </span>
+        <span class="text-xs text-blue-200">The agent is actively monitoring Chrome and will automatically resume the moment you finish!</span>
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+        <span class="text-[11px] text-slate-500 flex items-center space-x-1">
+          <i class="fa-solid fa-clock"></i>
+          <span id="captchaTimerText">Standing by...</span>
+        </span>
+        <button id="btnCaptchaSolved" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-emerald-600/25 transition active:scale-95 flex items-center space-x-2">
+          <i class="fa-solid fa-check-double"></i>
+          <span>I've Completed Verification</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

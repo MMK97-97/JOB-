@@ -29,6 +29,8 @@ export class JobAgent extends EventEmitter {
       p.on('log', evt => this.emit('log', evt));
       p.on('status', evt => this.emit('job-status', evt));
       p.on('step', evt => this.emit('job-step', evt));
+      p.on('captcha-challenge', evt => this.emit('captcha-challenge', evt));
+      p.on('captcha-resolved', evt => this.emit('captcha-resolved', evt));
     });
 
     this.pendingQuestions = new Map();

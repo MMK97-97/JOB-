@@ -42,6 +42,8 @@ export function createServer(port = 3000) {
   agent.on('search-results', evt => broadcast('search-results', evt));
   agent.on('question-prompt', evt => broadcast('question-prompt', evt));
   agent.on('question-resolved', evt => broadcast('question-resolved', evt));
+  agent.on('captcha-challenge', evt => broadcast('captcha-challenge', evt));
+  agent.on('captcha-resolved', evt => broadcast('captcha-resolved', evt));
 
   // REST API Routes
   app.get('/api/status', (req, res) => {

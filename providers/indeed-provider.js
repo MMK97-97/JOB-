@@ -40,15 +40,19 @@ export class IndeedProvider extends BaseJobProvider {
 
       // Check for Cloudflare / bot check
       const isChallenged = await page.evaluate(() => {
-        const title = document.title.toLowerCase();
-        const body = document.body.innerText.toLowerCase();
+        const title = (document.title || '').toLowerCase();
+        const body = (document.body ? document.body.innerText : '').toLowerCase();
         return title.includes('just a moment') || body.includes('verify you are human') || body.includes('security check');
       });
 
       if (isChallenged) {
-        this.log('Anti-bot challenge detected! Waiting 10 seconds for user manual bypass or auto-pass...', 'warning');
+        this.log('🛡️ Anti-bot challenge detected on search. Resolving verification challenge...', 'warning');
         await this.browserManager.takeScreenshot('indeed-challenge');
-        await this.browserManager.delay(10000);
+        const solved = await this.waitForCaptchaResolution(page, page, { title: `Search: "${query}" in "${location}"`, company: 'Indeed' }, 90, options);
+        if (!solved) {
+          this.log('⚠️ Security challenge timed out. Advancing to next search query.', 'warning');
+          break;
+        }
       }
 
       // Human-like reading scroll to load all cards
@@ -912,35 +916,6 @@ export class IndeedProvider extends BaseJobProvider {
     }
   }
 
-  async handleCaptcha(page, ctx) {
-    try {
-      // 1. Search all frames for reCAPTCHA anchor
-      const allFrames = page && typeof page.frames === 'function' ? page.frames() : [];
-      for (const rcFrame of allFrames) {
-        const u = rcFrame.url().toLowerCase();
-        if (u.includes('recaptcha') && (u.includes('anchor') || u.includes('api2'))) {
-          const anchor = await rcFrame.$('#recaptcha-anchor, .recaptcha-checkbox-border, [role="checkbox"]');
-          if (anchor) {
-            const isChecked = await rcFrame.evaluate(el => el.getAttribute('aria-checked') === 'true').catch(() => false);
-            if (!isChecked) {
-              this.log('🛡️ Auto-clicking reCAPTCHA "I\'m not a robot" checkbox...');
-              await this.browserManager.humanClick(anchor, rcFrame);
-              await this.browserManager.delay(2000);
-            }
-          }
-        }
-      }
-
-      // 2. Also check in main page/ctx for captcha elements
-      await ctx.evaluate(() => {
-        const captchaEl = document.querySelector('.recaptcha-checkbox, #recaptcha-anchor, [data-testid="captcha"]');
-        if (captchaEl) captchaEl.click();
-      }).catch(() => {});
-    } catch (e) {
-      // non-blocking
-    }
-  }
-
   async handleNavigationButtons(ctx, page, isDryRun, job, options = {}) {
     // Helper to check confirmation across ctx and page
     const checkConfirmation = async () => {
@@ -989,50 +964,28 @@ export class IndeedProvider extends BaseJobProvider {
         return { completed: true, submitted: false };
       }
 
-      // If submit button is disabled (e.g. waiting for reCAPTCHA)
+      // If submit button is disabled (e.g. waiting for reCAPTCHA or human verification)
       if (submitBtnInfo.disabled) {
-        this.log('🛡️ Submit button is waiting for verification ("I\'m not a robot"). Attempting auto-verification...');
-        await this.handleCaptcha(page, ctx);
+        this.log('🛡️ Submit button is waiting for verification ("I\'m not a robot"). Attempting auto-verification with natural pointer...');
+        await this.handleCaptcha(page, ctx, job);
 
-        // Wait up to 45 seconds for submit button to unlock (allowing manual solve if image challenge appears)
-        let waitSeconds = 0;
-        let isEnabled = false;
-        while (waitSeconds < 45) {
-          if (options.isCancelled && options.isCancelled()) {
-            this.log('🛑 Application stopped by user.', 'warning');
-            return { completed: true, submitted: false };
-          }
+        await this.browserManager.delay(2000);
+        let isEnabled = await ctx.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+          const sub = btns.find(b => {
+            const t = (b.innerText || b.value || '').trim().toLowerCase();
+            return t.includes('submit your application') || t.includes('submit application') || t === 'submit';
+          });
+          return sub && !sub.disabled && sub.getAttribute('aria-disabled') !== 'true';
+        }).catch(() => false);
 
-          while (options.isPaused && options.isPaused()) {
-            if (options.isCancelled && options.isCancelled()) break;
-            await this.browserManager.delay(500);
-          }
-
-          await this.browserManager.delay(1500);
-          waitSeconds += 1.5;
-
-          isEnabled = await ctx.evaluate(() => {
-            const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
-            const sub = btns.find(b => {
-              const t = (b.innerText || b.value || '').trim().toLowerCase();
-              return t.includes('submit your application') || t.includes('submit application') || t === 'submit';
-            });
-            return sub && !sub.disabled && sub.getAttribute('aria-disabled') !== 'true';
-          }).catch(() => false);
-
-          if (isEnabled) {
-            this.log('✅ reCAPTCHA verified! Submit button unlocked.');
-            break;
-          }
-
-          if (Math.round(waitSeconds) % 6 === 0) {
-            this.log(`🛡️ Waiting for verification (${Math.round(45 - waitSeconds)}s remaining)... Solve the captcha in Chrome if prompted.`);
-            await this.handleCaptcha(page, ctx);
-          }
+        if (!isEnabled) {
+          this.log('🛡️ Interactive verification challenge required. Alerting candidate on dashboard...', 'warning');
+          isEnabled = await this.waitForCaptchaResolution(page, ctx, job, 120, options);
         }
 
         if (!isEnabled) {
-          this.log('⚠️ Submit button remained locked by reCAPTCHA. Pausing for user manual verification in Chrome...', 'warning');
+          this.log('⚠️ Submit button remained locked by verification challenge. Pausing application...', 'warning');
           return { completed: false, submitted: false };
         }
       }
