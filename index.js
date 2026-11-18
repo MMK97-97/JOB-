@@ -3,6 +3,7 @@
 import { createServer } from './ui/server.js';
 import { JobAgent } from './core/agent.js';
 import chalk from 'chalk';
+import { exec } from 'child_process';
 
 const args = process.argv.slice(2);
 
@@ -75,10 +76,31 @@ async function main() {
   const port = process.env.PORT || 3000;
   const { server } = createServer(port);
 
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(chalk.yellow(`\n Port ${port} is already in use by another instance.`));
+      console.log(chalk.bold(` You can access the already running dashboard at: `) + chalk.cyan.underline(`http://localhost:${port}\n`));
+      const openCmd = process.platform === 'win32' ? `start http://localhost:${port}` :
+                      process.platform === 'darwin' ? `open http://localhost:${port}` :
+                      `xdg-open http://localhost:${port}`;
+      exec(openCmd);
+    } else {
+      console.error(chalk.red('Server error:'), err);
+    }
+  });
+
   server.listen(port, () => {
-    console.log(chalk.green(`\n Web Dashboard is active and ready!`));
+    console.log(chalk.bold.green(`\n Web Dashboard is active and running!`));
     console.log(chalk.bold(` Access URL: `) + chalk.cyan.underline(`http://localhost:${port}`));
-    console.log(chalk.gray(` Press Ctrl+C to stop the dashboard server.\n`));
+    console.log(chalk.yellow(` Opening dashboard in your browser...`));
+    console.log(chalk.gray(`\n [NOTE] Keep this terminal window open while using the dashboard.`));
+    console.log(chalk.gray(` Only press Ctrl+C when you want to stop the server.\n`));
+
+    // Automatically open the user's browser
+    const openCmd = process.platform === 'win32' ? `start http://localhost:${port}` :
+                    process.platform === 'darwin' ? `open http://localhost:${port}` :
+                    `xdg-open http://localhost:${port}`;
+    exec(openCmd);
   });
 }
 
