@@ -124,25 +124,27 @@ export class JobAgent extends EventEmitter {
       await this.browserManager.launch();
 
       let appliedCount = 0;
-      const provider = this.providers[targetBoard] || this.providers.indeed;
+      const activeProviders = targetBoard === 'all'
+        ? [this.providers.indeed, this.providers.linkedin]
+        : [this.providers[targetBoard] || this.providers.indeed];
 
       const titles = criteria.targetTitles || ['Supply Chain Manager'];
       const locations = criteria.locations || ['Sarasota, FL'];
       const sessionEvaluated = new Set();
 
-      for (const title of titles) {
-        if (!this.isRunning) break;
+      for (const provider of activeProviders) {
+        if (!this.isRunning || appliedCount >= maxApps) break;
+        this.log(`🌐 Operating on Job Portal: ${provider.name.toUpperCase()}`);
 
-        for (const loc of locations) {
-          if (!this.isRunning) break;
-          if (appliedCount >= maxApps) {
-            this.log(`Target limit of ${maxApps} applications reached for this session. Completing.`);
-            break;
-          }
+        for (const title of titles) {
+          if (!this.isRunning || appliedCount >= maxApps) break;
 
-          this.log(`🔍 Searching for "${title}" in "${loc}" on ${provider.name.toUpperCase()}...`);
-          const foundJobs = await provider.search(title, loc, criteria);
-          this.emit('search-results', { title, location: loc, count: foundJobs.length, jobs: foundJobs });
+          for (const loc of locations) {
+            if (!this.isRunning || appliedCount >= maxApps) break;
+
+            this.log(`🔍 Searching for "${title}" in "${loc}" on ${provider.name.toUpperCase()}...`);
+            const foundJobs = await provider.search(title, loc, criteria);
+            this.emit('search-results', { title, location: loc, count: foundJobs.length, jobs: foundJobs });
 
           for (const job of foundJobs) {
             if (!this.isRunning) break;
@@ -193,6 +195,7 @@ export class JobAgent extends EventEmitter {
           }
         }
       }
+    }
 
       this.log(`🎉 Session finished. Total processed applications: ${appliedCount}`);
     } catch (err) {

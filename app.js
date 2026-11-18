@@ -1024,6 +1024,114 @@ function bindEvents() {
       alert('Error saving answer: ' + e.message);
     }
   });
+
+  // Toggle Test Question Sandbox
+  const panelTest = document.getElementById('panelTestQuestion');
+  const btnTestPrompt = document.getElementById('btnTestQuestionPrompt');
+  const btnCloseTest = document.getElementById('btnCloseTestQuestion');
+  const btnRunTest = document.getElementById('btnRunQuestionTest');
+  const inputTestText = document.getElementById('inputTestQuestionText');
+  const resultTest = document.getElementById('testQuestionResult');
+
+  if (btnTestPrompt) {
+    btnTestPrompt.addEventListener('click', () => {
+      panelTest.classList.toggle('hidden');
+      if (!panelTest.classList.contains('hidden')) inputTestText.focus();
+    });
+  }
+
+  if (btnCloseTest) {
+    btnCloseTest.addEventListener('click', () => panelTest.classList.add('hidden'));
+  }
+
+  if (btnRunTest) {
+    const runTest = async () => {
+      const q = inputTestText.value.trim();
+      if (!q) return;
+      btnRunTest.disabled = true;
+      btnRunTest.innerText = 'Evaluating...';
+      try {
+        const res = await fetch('/api/test-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: q })
+        });
+        const data = await res.json();
+        resultTest.classList.remove('hidden');
+        resultTest.innerHTML = `
+          <div class="flex items-center justify-between pb-1 border-b border-slate-800">
+            <span class="text-slate-400">Knowledge Match:</span>
+            <span class="font-semibold ${data.isKnown ? 'text-emerald-400' : 'text-amber-400'}">${data.isKnown ? 'Recognized & Grounded' : 'Unknown (Prompt Trigger)'}</span>
+          </div>
+          <div class="flex items-center justify-between py-1">
+            <span class="text-slate-400">Source:</span>
+            <span class="text-slate-300 font-mono text-[11px]">${data.source}</span>
+          </div>
+          <div class="pt-1">
+            <span class="text-slate-400">Agent Resolved Answer:</span>
+            <div class="mt-1 p-2 rounded bg-slate-950 border border-slate-800 text-white font-medium break-words">${data.answer}</div>
+          </div>
+        `;
+      } catch (err) {
+        alert('Test failed: ' + err.message);
+      } finally {
+        btnRunTest.disabled = false;
+        btnRunTest.innerText = 'Evaluate';
+      }
+    };
+    btnRunTest.addEventListener('click', runTest);
+    inputTestText.addEventListener('keydown', (e) => { if (e.key === 'Enter') runTest(); });
+  }
+
+  // Export Custom Memory
+  const btnExport = document.getElementById('btnExportCustomAnswers');
+  if (btnExport) {
+    btnExport.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/custom-answers');
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `custom-answers-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Memory bank exported to JSON!');
+      } catch (e) {
+        alert('Export failed: ' + e.message);
+      }
+    });
+  }
+
+  // Import Custom Memory
+  const btnImport = document.getElementById('btnImportCustomAnswers');
+  const fileImport = document.getElementById('fileImportMemory');
+  if (btnImport && fileImport) {
+    btnImport.addEventListener('click', () => fileImport.click());
+    fileImport.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const parsed = JSON.parse(evt.target.result);
+          const res = await fetch('/api/custom-answers/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: parsed })
+          });
+          const result = await res.json();
+          showToast(`Successfully imported ${result.count} custom answers!`);
+          loadData();
+        } catch (err) {
+          alert('Failed to parse or import JSON file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      fileImport.value = '';
+    });
+  }
 }
 
 window.viewScreenshot = function(filePath) {

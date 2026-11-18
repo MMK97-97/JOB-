@@ -25,6 +25,7 @@ export class BrowserManager {
     };
     this.browser = null;
     this.activePage = null;
+    this.cursorPos = { x: 350, y: 350 };
   }
 
   async launch() {
@@ -83,7 +84,18 @@ export class BrowserManager {
       // Clean webdriver flags and auto-kill beforeunload popups ("Leave site? Changes you made may not be saved")
       await this.activePage.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        window.navigator.chrome = { runtime: {} };
+        window.navigator.chrome = {
+          runtime: {},
+          loadTimes: function() {},
+          csi: function() {},
+          app: {}
+        };
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5]
+        });
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en']
+        });
         try {
           Object.defineProperty(window, 'onbeforeunload', {
             get: () => null,
@@ -212,19 +224,42 @@ export class BrowserManager {
   }
 
   /**
-   * Human-like smooth mouse movement with curved trajectory
+   * Human-like smooth mouse movement with cubic Bézier curve physics and deceleration
    */
   async humanMouseMove(targetX, targetY, page = null) {
     const targetPage = this._resolvePage(page);
     if (!targetPage || !targetPage.mouse) return;
     try {
-      const steps = Math.floor(Math.random() * 8) + 12;
+      const startX = this.cursorPos.x;
+      const startY = this.cursorPos.y;
+      const distance = Math.hypot(targetX - startX, targetY - startY);
+      const steps = Math.max(10, Math.min(32, Math.floor(distance / 22)));
+
+      // Randomized natural deflection control points for cubic Bézier trajectory
+      const cp1X = startX + (targetX - startX) * 0.25 + (Math.random() - 0.5) * (distance * 0.18);
+      const cp1Y = startY + (targetY - startY) * 0.25 + (Math.random() - 0.5) * (distance * 0.18);
+      const cp2X = startX + (targetX - startX) * 0.75 + (Math.random() - 0.5) * (distance * 0.12);
+      const cp2Y = startY + (targetY - startY) * 0.75 + (Math.random() - 0.5) * (distance * 0.12);
+
       for (let i = 1; i <= steps; i++) {
-        const jitterX = (Math.random() - 0.5) * 4;
-        const jitterY = (Math.random() - 0.5) * 4;
-        await targetPage.mouse.move(targetX + jitterX, targetY + jitterY).catch(() => {});
-        await this.delay(Math.floor(Math.random() * 15) + 10);
+        const t = i / steps;
+        // Cubic Bézier calculation
+        const cx = Math.pow(1 - t, 3) * startX +
+                   3 * Math.pow(1 - t, 2) * t * cp1X +
+                   3 * (1 - t) * Math.pow(t, 2) * cp2X +
+                   Math.pow(t, 3) * targetX;
+        const cy = Math.pow(1 - t, 3) * startY +
+                   3 * Math.pow(1 - t, 2) * t * cp1Y +
+                   3 * (1 - t) * Math.pow(t, 2) * cp2Y +
+                   Math.pow(t, 3) * targetY;
+
+        await targetPage.mouse.move(cx, cy).catch(() => {});
+        this.cursorPos = { x: cx, y: cy };
+        // Human deceleration curve (ease-out as reaching target)
+        const delay = Math.floor(8 + Math.pow(t, 1.8) * 12);
+        await this.delay(delay);
       }
+      this.cursorPos = { x: targetX, y: targetY };
     } catch (e) {}
   }
 

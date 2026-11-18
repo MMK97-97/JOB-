@@ -58,6 +58,34 @@ export function createServer(port = 3000) {
     res.json({ success, customAnswers: agent.profileManager.profile.customAnswers || {} });
   });
 
+  app.post('/api/test-question', (req, res) => {
+    const { prompt, type = 'text', options = [] } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Question prompt required' });
+    const savedCustom = agent.profileManager.findSavedCustomAnswer(prompt);
+    const isKnown = agent.profileManager.isKnownQuestion(prompt, type, options);
+    const answer = agent.profileManager.answerQuestion(prompt, type, options);
+    res.json({
+      prompt,
+      isKnown,
+      isCustom: savedCustom !== null,
+      answer,
+      source: savedCustom !== null ? 'Permanent Memory Bank' : (isKnown ? 'Profile Knowledge Base' : 'Unknown (Requires Candidate Prompt)')
+    });
+  });
+
+  app.post('/api/custom-answers/import', (req, res) => {
+    const { answers } = req.body;
+    if (!answers || typeof answers !== 'object') return res.status(400).json({ error: 'Invalid answers object' });
+    let count = 0;
+    for (const [key, item] of Object.entries(answers)) {
+      const ans = typeof item === 'object' ? item.answer : item;
+      const t = typeof item === 'object' ? item.type : 'text';
+      agent.profileManager.saveCustomAnswer(key, ans, t);
+      count++;
+    }
+    res.json({ success: true, count, customAnswers: agent.profileManager.profile.customAnswers || {} });
+  });
+
   app.post('/api/agent/answer-question', (req, res) => {
     const { questionId, answer, remember = true, prompt, type } = req.body;
     if (!questionId || answer === undefined) {

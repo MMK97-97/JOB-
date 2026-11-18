@@ -89,8 +89,11 @@ export class ProfileManager {
     if (
       q.includes('authorized') || q.includes('sponsorship') || q.includes('visa') ||
       q.includes('background check') || q.includes('drug test') || q.includes('driver') ||
-      q.includes('18 years') || q.includes('previously employed') || q.includes('relative') ||
-      q.includes('felony') || q.includes('convicted')
+      q.includes('18 years') || q.includes('21 years') || q.includes('previously employed') ||
+      q.includes('relative') || q.includes('felony') || q.includes('convicted') ||
+      q.includes('non-compete') || q.includes('nda') || q.includes('terminated') ||
+      q.includes('fired') || q.includes('resigned') || q.includes('accommodation') ||
+      q.includes('lift') || q.includes('physical') || q.includes('english') || q.includes('fluent')
     ) {
       return true;
     }
@@ -111,8 +114,11 @@ export class ProfileManager {
       q.includes('essential to the success') || q.includes('highest level of education') ||
       q.includes('degree') || q.includes('years of experience') || q.includes('how many years') ||
       q.includes('salary') || q.includes('compensation') || q.includes('pay') ||
-      q.includes('notice') || q.includes('start date') || q.includes('availability') ||
-      q.includes('cover letter') || q.includes('statement')
+      q.includes('hourly') || q.includes('rate') || q.includes('notice') ||
+      q.includes('start date') || q.includes('availability') || q.includes('cover letter') ||
+      q.includes('statement') || q.includes('s&op') || q.includes('six sigma') ||
+      q.includes('apics') || q.includes('cscp') || q.includes('erp') || q.includes('sap') ||
+      q.includes('excel') || q.includes('sql') || q.includes('power bi') || q.includes('gpa')
     ) {
       return true;
     }
@@ -209,8 +215,28 @@ export class ProfileManager {
       return 'No';
     }
 
-    if (q.includes('non-compete') || q.includes('restrictive covenant') || q.includes('agreement with another employer')) {
+    if (q.includes('non-compete') || q.includes('restrictive covenant') || q.includes('agreement with another employer') || q.includes('nda')) {
       return 'No';
+    }
+
+    if (q.includes('terminated') || q.includes('fired') || q.includes('asked to resign') || q.includes('involuntary separation')) {
+      return 'No';
+    }
+
+    if (q.includes('accommodation') || q.includes('require accommodation') || q.includes('need accommodations')) {
+      return 'No';
+    }
+
+    if (q.includes('lift') || q.includes('50 lbs') || q.includes('25 lbs') || q.includes('physical demand') || q.includes('stand or walk')) {
+      return 'Yes';
+    }
+
+    if (q.includes('english') || q.includes('fluent in') || q.includes('read and write english') || q.includes('speak english')) {
+      return 'Yes';
+    }
+
+    if (q.includes('gpa') || q.includes('cumulative gpa')) {
+      return '3.8';
     }
 
     if (q.includes('18 years') || q.includes('at least 18') || q.includes('21 years') || q.includes('age')) {

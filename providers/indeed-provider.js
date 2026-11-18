@@ -13,100 +13,120 @@ export class IndeedProvider extends BaseJobProvider {
     const encodedQ = encodeURIComponent(query);
     const encodedL = encodeURIComponent(location);
     const fromage = options.datePosted || '14';
-    const searchUrl = `https://www.indeed.com/jobs?q=${encodedQ}&l=${encodedL}&fromage=${fromage}`;
+    const maxPages = options.maxPages || 2;
+    const allDiscovered = [];
+    const seenJks = new Set();
 
-    this.log(`Navigating to search URL: ${searchUrl}`);
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await this.browserManager.delay(3000);
+    for (let pNum = 0; pNum < maxPages; pNum++) {
+      const start = pNum * 10;
+      const searchUrl = `https://www.indeed.com/jobs?q=${encodedQ}&l=${encodedL}&fromage=${fromage}${start > 0 ? `&start=${start}` : ''}`;
 
-    // Check for Cloudflare / bot check
-    const isChallenged = await page.evaluate(() => {
-      const title = document.title.toLowerCase();
-      const body = document.body.innerText.toLowerCase();
-      return title.includes('just a moment') || body.includes('verify you are human') || body.includes('security check');
-    });
+      this.log(`Navigating to search URL (Page ${pNum + 1}): ${searchUrl}`);
+      try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      } catch (e) {
+        break;
+      }
+      await this.browserManager.delay(2500);
 
-    if (isChallenged) {
-      this.log('Anti-bot challenge detected! Waiting 10 seconds for user manual bypass or auto-pass...', 'warning');
-      await this.browserManager.takeScreenshot('indeed-challenge');
-      await this.browserManager.delay(10000);
-    }
-
-    // Scroll to load all cards
-    await page.evaluate(() => window.scrollBy(0, 1000));
-    await this.browserManager.delay(1500);
-
-    // Extract job listings
-    const jobs = await page.evaluate((easyApplyOnly) => {
-      const results = [];
-      const jobCards = document.querySelectorAll('.job_seen_beacon, div[data-testid="jobCard"], .resultContent, .jobsearch-ResultsList > li');
-
-      jobCards.forEach(card => {
-        try {
-          const titleEl = card.querySelector('h2.jobTitle, a.jcs-JobTitle, .jobTitle span, [data-testid="job-title"]');
-          const title = titleEl ? titleEl.innerText.trim() : '';
-
-          const companyEl = card.querySelector('[data-testid="company-name"], .companyName, span.companyName');
-          const company = companyEl ? companyEl.innerText.trim() : '';
-
-          const locationEl = card.querySelector('[data-testid="text-location"], .companyLocation, div.companyLocation');
-          const location = locationEl ? locationEl.innerText.trim() : '';
-
-          const salaryEl = card.querySelector('.metadata.salary-snippet-container, [data-testid="attribute_snippet_testid"]');
-          const salary = salaryEl ? salaryEl.innerText.trim() : 'Not listed';
-
-          // Check for Easy Apply / Indeed Apply
-          const cardText = (card.innerText || '').toLowerCase();
-          const hasEasyApplyBadge = cardText.includes('easily apply') ||
-                                   cardText.includes('easy apply') ||
-                                   cardText.includes('apply with your indeed resume') ||
-                                   cardText.includes('responsive employer') ||
-                                   card.querySelector('[data-testid="indeedApply"], .iaIcon, svg.ia-icon, [aria-label*="Easily apply" i], .jobsearch-IndeedApplyButton') !== null;
-
-          // Find link and jobId (jk)
-          let linkEl = card.querySelector('a[data-jk], a.jcs-JobTitle, h2.jobTitle a, a[href*="jk="]');
-          let jk = '';
-          let url = '';
-
-          if (linkEl) {
-            jk = linkEl.getAttribute('data-jk') || '';
-            const href = linkEl.getAttribute('href') || '';
-            if (!jk && href.includes('jk=')) {
-              const match = href.match(/jk=([a-zA-Z0-9]+)/);
-              if (match) jk = match[1];
-            }
-            url = href.startsWith('http') ? href : `https://www.indeed.com${href}`;
-          }
-
-          if (!jk && card.getAttribute('data-jk')) {
-            jk = card.getAttribute('data-jk');
-            url = `https://www.indeed.com/viewjob?jk=${jk}`;
-          }
-
-          if (title && (jk || url)) {
-            if (!easyApplyOnly || hasEasyApplyBadge) {
-              results.push({
-                jobId: jk || `indeed_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                title,
-                company,
-                location,
-                salary,
-                url: jk ? `https://www.indeed.com/viewjob?jk=${jk}` : url,
-                isEasyApply: hasEasyApplyBadge,
-                board: 'indeed'
-              });
-            }
-          }
-        } catch (e) {
-          // ignore single card error
-        }
+      // Check for Cloudflare / bot check
+      const isChallenged = await page.evaluate(() => {
+        const title = document.title.toLowerCase();
+        const body = document.body.innerText.toLowerCase();
+        return title.includes('just a moment') || body.includes('verify you are human') || body.includes('security check');
       });
 
-      return results;
-    }, options.easyApplyOnly ?? true);
+      if (isChallenged) {
+        this.log('Anti-bot challenge detected! Waiting 10 seconds for user manual bypass or auto-pass...', 'warning');
+        await this.browserManager.takeScreenshot('indeed-challenge');
+        await this.browserManager.delay(10000);
+      }
 
-    this.log(`Discovered ${jobs.length} jobs (Easy Apply filter: ${options.easyApplyOnly ? 'ON' : 'OFF'})`);
-    return jobs;
+      // Human-like reading scroll to load all cards
+      await this.browserManager.humanScroll(600, page);
+      await this.browserManager.delay(1200);
+
+      // Extract job listings
+      const pageJobs = await page.evaluate((easyApplyOnly) => {
+        const results = [];
+        const jobCards = document.querySelectorAll('.job_seen_beacon, div[data-testid="jobCard"], .resultContent, .jobsearch-ResultsList > li');
+
+        jobCards.forEach(card => {
+          try {
+            const titleEl = card.querySelector('h2.jobTitle, a.jcs-JobTitle, .jobTitle span, [data-testid="job-title"]');
+            const title = titleEl ? titleEl.innerText.trim() : '';
+
+            const companyEl = card.querySelector('[data-testid="company-name"], .companyName, span.companyName');
+            const company = companyEl ? companyEl.innerText.trim() : '';
+
+            const locationEl = card.querySelector('[data-testid="text-location"], .companyLocation, div.companyLocation');
+            const location = locationEl ? locationEl.innerText.trim() : '';
+
+            const salaryEl = card.querySelector('.metadata.salary-snippet-container, [data-testid="attribute_snippet_testid"]');
+            const salary = salaryEl ? salaryEl.innerText.trim() : 'Not listed';
+
+            // Check for Easy Apply / Indeed Apply
+            const cardText = (card.innerText || '').toLowerCase();
+            const hasEasyApplyBadge = cardText.includes('easily apply') ||
+                                     cardText.includes('easy apply') ||
+                                     cardText.includes('apply with your indeed resume') ||
+                                     cardText.includes('responsive employer') ||
+                                     card.querySelector('[data-testid="indeedApply"], .iaIcon, svg.ia-icon, [aria-label*="Easily apply" i], .jobsearch-IndeedApplyButton') !== null;
+
+            // Find link and jobId (jk)
+            let linkEl = card.querySelector('a[data-jk], a.jcs-JobTitle, h2.jobTitle a, a[href*="jk="]');
+            let jk = '';
+            let url = '';
+
+            if (linkEl) {
+              jk = linkEl.getAttribute('data-jk') || '';
+              const href = linkEl.getAttribute('href') || '';
+              if (!jk && href.includes('jk=')) {
+                const match = href.match(/jk=([a-zA-Z0-9]+)/);
+                if (match) jk = match[1];
+              }
+              url = href.startsWith('http') ? href : `https://www.indeed.com${href}`;
+            }
+
+            if (!jk && card.getAttribute('data-jk')) {
+              jk = card.getAttribute('data-jk');
+              url = `https://www.indeed.com/viewjob?jk=${jk}`;
+            }
+
+            if (title && (jk || url)) {
+              if (!easyApplyOnly || hasEasyApplyBadge) {
+                results.push({
+                  jobId: jk || `indeed_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                  title,
+                  company,
+                  location,
+                  salary,
+                  url: jk ? `https://www.indeed.com/viewjob?jk=${jk}` : url,
+                  isEasyApply: hasEasyApplyBadge,
+                  board: 'indeed'
+                });
+              }
+            }
+          } catch (e) {
+            // ignore single card error
+          }
+        });
+
+        return results;
+      }, options.easyApplyOnly ?? true);
+
+      for (const j of pageJobs) {
+        if (!seenJks.has(j.jobId)) {
+          seenJks.add(j.jobId);
+          allDiscovered.push(j);
+        }
+      }
+
+      if (pageJobs.length === 0) break;
+    }
+
+    this.log(`Discovered ${allDiscovered.length} jobs across pages (Easy Apply filter: ${options.easyApplyOnly ? 'ON' : 'OFF'})`);
+    return allDiscovered;
   }
 
   /**
