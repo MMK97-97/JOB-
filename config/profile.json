@@ -66,6 +66,28 @@
     "python": 2,
     "javascript": 2
   },
+  "workExperience": [
+    {
+      "jobTitle": "Procurement & Inventory Analyst",
+      "company": "Stark Premium",
+      "city": "Sarasota",
+      "state": "FL",
+      "current": true,
+      "startDate": "11/2025",
+      "endDate": "Present",
+      "description": "Own purchasing and inventory planning workflows for 900+ SKUs and 80+ vendors. Coordinate ~$1M monthly purchasing and $1M+ inventory across U.S., Canada, and Europe operations."
+    },
+    {
+      "jobTitle": "Supply Chain & Operations Executive",
+      "company": "Aqgromalin Farmtech Services",
+      "city": "Chennai",
+      "state": "India",
+      "current": false,
+      "startDate": "03/2019",
+      "endDate": "06/2022",
+      "description": "Coordinated sourcing across 50+ suppliers; implemented purchasing improvements reducing costs by 15%; improved supplier on-time delivery by 30%."
+    }
+  ],
   "education": {
     "highestLevel": "Master's Degree",
     "degrees": [

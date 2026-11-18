@@ -146,6 +146,10 @@ export class IndeedProvider extends BaseJobProvider {
         this.log(`🤖 Copilot read full job description (${wordsCount} words). Extracted responsibilities & qualifications.`);
       }
 
+      // Human-like reading scroll and pause
+      await this.browserManager.humanScroll(350, page);
+      await this.browserManager.humanPause(1200, 2200);
+
       // Look for Indeed Apply button
       const applyBtnSelector = '#indeedApplyButton, button[id*="indeedApply"], button.jobsearch-IndeedApplyButton, [data-testid="indeedApplyButton"], button[aria-label*="Apply now" i], a[href*="smartapply.indeed.com"], .indeed-apply-button';
       let applyButton = await page.$(applyBtnSelector);
@@ -191,21 +195,21 @@ export class IndeedProvider extends BaseJobProvider {
         }, 4000);
       });
 
-      // Click Apply
-      this.log('Clicking "Apply now" button...');
-      await applyButton.click();
+      // Human-like click on Apply button
+      this.log('🤖 Copilot clicking "Apply now" button with natural human cursor...');
+      await this.browserManager.humanClick(applyButton, page);
       const popupPage = await newTargetPromise;
       const applyPage = popupPage || page;
       await this.browserManager.delay(3500);
 
-      // Multi-step modal navigator (typically up to 10 steps max)
-      let maxSteps = 12;
+      // Multi-step modal navigator (typically up to 15 steps max)
+      let maxSteps = 15;
       let step = 0;
       let submitted = false;
 
       while (step < maxSteps) {
         step++;
-        this.log(`Processing application step ${step}...`);
+        this.log(`🤖 Copilot processing application step ${step}...`);
 
         // Check active application context: could be applyPage, popup, or iframe
         let frame = null;
@@ -222,19 +226,26 @@ export class IndeedProvider extends BaseJobProvider {
         const stepScreenshot = await this.browserManager.takeScreenshot(`step-${step}`);
         this.emit('step', { step, screenshot: stepScreenshot, job });
 
+        // Natural scanning pause on step load
+        await this.browserManager.humanPause(700, 1500);
+
         // 1. Fill Contact details if present
         await this.fillContactFields(ctx, profile);
 
-        // 2. Handle Resume upload if file input exists
+        // 2. Handle Resume selection / upload
         await this.handleResumeUpload(ctx, resumePath);
 
-        // 3. Fill Screening Questions
+        // 3. Handle Work Experience & Education if prompted
+        await this.fillWorkExperienceFields(ctx, profile);
+        await this.fillEducationFields(ctx, profile);
+
+        // 4. Fill Screening Questions
         await this.fillScreeningQuestions(ctx);
 
-        // 4. Fill Voluntary Self-ID / EEO if present
+        // 5. Fill Voluntary Self-ID / Demographic EEO
         await this.fillEEOFields(ctx, profile);
 
-        // 5. Look for Next / Continue / Review / Submit button
+        // 6. Look for Next / Continue / Review / Submit button
         const actionResult = await this.handleNavigationButtons(ctx, applyPage, isDryRun, job);
 
         if (actionResult.completed) {
@@ -242,7 +253,7 @@ export class IndeedProvider extends BaseJobProvider {
           break;
         }
 
-        await this.browserManager.delay(2000);
+        await this.browserManager.delay(1800);
       }
 
       if (popupPage && !popupPage.isClosed()) {
@@ -306,6 +317,44 @@ export class IndeedProvider extends BaseJobProvider {
     } catch (e) {
       // ignore minor input field fill errors
     }
+  }
+
+  async fillWorkExperienceFields(ctx, profile) {
+    try {
+      const exp = profile.workExperience && profile.workExperience.length > 0 ? profile.workExperience[0] : null;
+      if (!exp) return;
+
+      const titleInput = await ctx.$('input[id*="jobTitle" i], input[name*="jobTitle" i], input[id*="title" i], input[aria-label*="job title" i]');
+      if (titleInput) {
+        const val = await ctx.evaluate(el => el.value, titleInput);
+        if (!val) {
+          this.log(`🤖 Copilot populating work experience: ${exp.jobTitle}`);
+          await this.browserManager.humanType(titleInput, exp.jobTitle, ctx);
+        }
+      }
+
+      const compInput = await ctx.$('input[id*="company" i], input[name*="company" i], input[aria-label*="company" i]');
+      if (compInput) {
+        const val = await ctx.evaluate(el => el.value, compInput);
+        if (!val) await this.browserManager.humanType(compInput, exp.company, ctx);
+      }
+    } catch (e) {}
+  }
+
+  async fillEducationFields(ctx, profile) {
+    try {
+      const edu = profile.education?.degrees ? profile.education.degrees[0] : null;
+      if (!edu) return;
+
+      const schoolInput = await ctx.$('input[id*="school" i], input[name*="school" i], input[id*="university" i]');
+      if (schoolInput) {
+        const val = await ctx.evaluate(el => el.value, schoolInput);
+        if (!val) {
+          this.log(`🤖 Copilot confirming education: ${edu.school}`);
+          await this.browserManager.humanType(schoolInput, edu.school, ctx);
+        }
+      }
+    } catch (e) {}
   }
 
   async handleResumeUpload(ctx, resumePath) {
@@ -522,10 +571,10 @@ export class IndeedProvider extends BaseJobProvider {
         return { completed: true, submitted: false };
       }
 
-      this.log(`Clicking final Submit button: "${submitBtn.text}"!`);
+      this.log(`🤖 Copilot executing final Submit: "${submitBtn.text}"!`);
       const buttons = await ctx.$$('button');
-      await buttons[submitBtn.index].click();
-      await this.browserManager.delay(4000);
+      await this.browserManager.humanClick(buttons[submitBtn.index], ctx);
+      await this.browserManager.delay(4500);
       return { completed: true, submitted: true };
     }
 
@@ -538,10 +587,31 @@ export class IndeedProvider extends BaseJobProvider {
     );
 
     if (nextBtn) {
-      this.log(`Clicking button: "${nextBtn.text}"`);
+      this.log(`🤖 Copilot advancing to next step: "${nextBtn.text}"`);
       const buttons = await ctx.$$('button');
-      await buttons[nextBtn.index].click();
-      await this.browserManager.delay(2500);
+      await this.browserManager.humanClick(buttons[nextBtn.index], ctx);
+      await this.browserManager.delay(2200);
+
+      // Check for required field validation prompt
+      const hasValidationError = await ctx.evaluate(() => {
+        const errors = document.querySelectorAll('[aria-invalid="true"], .ia-Feedback-error, [role="alert"]');
+        return errors.length > 0;
+      });
+
+      if (hasValidationError) {
+        this.log('⚠️ Required field prompt detected. Copilot auto-resolving missing input...', 'warning');
+        await ctx.evaluate(() => {
+          const invalidInputs = document.querySelectorAll('[aria-invalid="true"], input:required:invalid');
+          invalidInputs.forEach(inp => {
+            if (inp.type === 'number') inp.value = '5';
+            else if (inp.type === 'text') inp.value = '5';
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        });
+        await this.browserManager.delay(1000);
+      }
+
       return { completed: false };
     }
 

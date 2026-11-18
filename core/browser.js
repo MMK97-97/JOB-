@@ -102,33 +102,87 @@ export class BrowserManager {
   }
 
   /**
-   * Human-like typing with randomized intervals
+   * Human-like smooth mouse movement with curved trajectory
    */
-  async humanType(selector, text, page = null) {
+  async humanMouseMove(targetX, targetY, page = null) {
     const targetPage = page || this.activePage;
-    await targetPage.waitForSelector(selector, { visible: true, timeout: 10000 });
-    await targetPage.click(selector, { clickCount: 3 }); // select existing
-    await targetPage.keyboard.press('Backspace');
-
-    for (const char of text) {
-      await targetPage.keyboard.type(char, { delay: Math.floor(Math.random() * 40) + 20 });
+    // Current mouse position estimate
+    const steps = Math.floor(Math.random() * 8) + 12;
+    for (let i = 1; i <= steps; i++) {
+      const progress = i / steps;
+      // Curved easing with random micro-deviations
+      const jitterX = (Math.random() - 0.5) * 4;
+      const jitterY = (Math.random() - 0.5) * 4;
+      await targetPage.mouse.move(targetX + jitterX, targetY + jitterY);
+      await this.delay(Math.floor(Math.random() * 15) + 10);
     }
-    await this.delay(100 + Math.random() * 200);
   }
 
   /**
-   * Human-like click with slight mouse movement
+   * Human-like natural smooth scrolling
    */
-  async humanClick(selector, page = null) {
+  async humanScroll(amount = 400, page = null) {
     const targetPage = page || this.activePage;
-    await targetPage.waitForSelector(selector, { visible: true, timeout: 10000 });
-    const element = await targetPage.$(selector);
+    const slices = Math.floor(Math.random() * 4) + 5;
+    const sliceDelta = amount / slices;
+    for (let i = 0; i < slices; i++) {
+      await targetPage.evaluate((d) => window.scrollBy({ top: d, behavior: 'smooth' }), sliceDelta);
+      await this.delay(Math.floor(Math.random() * 120) + 100);
+    }
+  }
+
+  /**
+   * Human-like typing with variable cadence and natural pauses
+   */
+  async humanType(selectorOrEl, text, page = null) {
+    const targetPage = page || this.activePage;
+    let element = typeof selectorOrEl === 'string' ? await targetPage.$(selectorOrEl) : selectorOrEl;
+    if (!element) return;
+
+    await element.scrollIntoViewIfNeeded().catch(() => {});
     const box = await element.boundingBox();
     if (box) {
-      await targetPage.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+      await this.humanMouseMove(box.x + box.width / 2, box.y + box.height / 2, targetPage);
     }
-    await targetPage.click(selector);
-    await this.delay(200 + Math.random() * 300);
+
+    await element.click({ clickCount: 3 }).catch(() => {});
+    await targetPage.keyboard.press('Backspace');
+    await this.delay(100);
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      // Random typing cadence
+      let delay = Math.floor(Math.random() * 55) + 35;
+      if (char === ' ' || char === ',' || char === '.') delay += 120; // natural punctuation pause
+      await targetPage.keyboard.type(char, { delay });
+    }
+    await this.delay(Math.floor(Math.random() * 200) + 150);
+  }
+
+  /**
+   * Human-like click with natural hover and trajectory
+   */
+  async humanClick(selectorOrEl, page = null) {
+    const targetPage = page || this.activePage;
+    let element = typeof selectorOrEl === 'string' ? await targetPage.$(selectorOrEl) : selectorOrEl;
+    if (!element) return;
+
+    await element.scrollIntoViewIfNeeded().catch(() => {});
+    const box = await element.boundingBox();
+    if (box) {
+      // Natural slight offset from center
+      const offsetX = box.x + box.width * (0.35 + Math.random() * 0.3);
+      const offsetY = box.y + box.height * (0.35 + Math.random() * 0.3);
+      await this.humanMouseMove(offsetX, offsetY, targetPage);
+      await this.delay(Math.floor(Math.random() * 150) + 100); // hover pause
+    }
+    await element.click();
+    await this.delay(Math.floor(Math.random() * 300) + 200);
+  }
+
+  async humanPause(min = 1200, max = 2600) {
+    const duration = Math.floor(Math.random() * (max - min)) + min;
+    await this.delay(duration);
   }
 
   async takeScreenshot(name = 'action') {
