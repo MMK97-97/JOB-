@@ -516,8 +516,8 @@ function populateCriteria(criteria) {
 
   document.getElementById('criteriaBlacklist').value = (criteria.blacklistCompanies || []).join('\n');
   document.getElementById('criteriaNegative').value = (criteria.negativeKeywords || []).join('\n');
-  document.getElementById('criteriaMinScore').value = criteria.minimumMatchScore || 40;
-  document.getElementById('criteriaMinScoreVal').textContent = `${criteria.minimumMatchScore || 40}%`;
+  document.getElementById('criteriaMinScore').value = Math.min(criteria.minimumMatchScore || 30, 40);
+  document.getElementById('criteriaMinScoreVal').textContent = `${Math.min(criteria.minimumMatchScore || 30, 40)}%`;
   document.getElementById('criteriaEasyApplyOnly').checked = criteria.easyApplyOnly ?? true;
   document.getElementById('checkDryRun').checked = criteria.dryRun ?? false;
 }

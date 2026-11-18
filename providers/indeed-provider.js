@@ -56,10 +56,12 @@ export class IndeedProvider extends BaseJobProvider {
           const salary = salaryEl ? salaryEl.innerText.trim() : 'Not listed';
 
           // Check for Easy Apply / Indeed Apply
-          const cardText = card.innerText || '';
-          const hasEasyApplyBadge = cardText.includes('Easily apply') ||
-                                   cardText.includes('Apply now') ||
-                                   card.querySelector('[data-testid="indeedApply"], .iaIcon, svg.ia-icon') !== null;
+          const cardText = (card.innerText || '').toLowerCase();
+          const hasEasyApplyBadge = cardText.includes('easily apply') ||
+                                   cardText.includes('easy apply') ||
+                                   cardText.includes('apply with your indeed resume') ||
+                                   cardText.includes('responsive employer') ||
+                                   card.querySelector('[data-testid="indeedApply"], .iaIcon, svg.ia-icon, [aria-label*="Easily apply" i], .jobsearch-IndeedApplyButton') !== null;
 
           // Find link and jobId (jk)
           let linkEl = card.querySelector('a[data-jk], a.jcs-JobTitle, h2.jobTitle a, a[href*="jk="]');

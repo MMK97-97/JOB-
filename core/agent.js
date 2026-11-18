@@ -50,13 +50,24 @@ export class JobAgent extends EventEmitter {
     this.isPaused = false;
     this.emit('agent-state', { state: 'RUNNING' });
 
+    // Always reload fresh configurations & tracker from disk
+    this.profileManager.load();
+    this.tracker.load();
+    this.tracker.clearSkipped(); // Purge old skipped jobs so all available positions are re-evaluated!
+
     const criteria = this.profileManager.searchCriteria;
+    // Guarantee match score threshold is sensible (never locked at 95%)
+    criteria.minimumMatchScore = Math.min(criteria.minimumMatchScore || 30, 35);
+
+    // Refresh matcher with current criteria
+    this.matcher = new JobMatcher(this.profileManager.profile, criteria);
+
     const isDryRun = options.dryRun ?? criteria.dryRun ?? false;
     const targetBoard = options.board || 'indeed';
-    const maxApps = options.maxApplications || criteria.maxApplicationsPerSession || 20;
+    const maxApps = options.maxApplications || criteria.maxApplicationsPerSession || 25;
 
     this.log(`🚀 Starting Autonomous Job Agent for ${this.profileManager.profile.personal.fullName}`);
-    this.log(`Configuration: Mode=${isDryRun ? 'DRY-RUN (Safe Review)' : 'AUTOPILOT (Live Submit)'}, Board=${targetBoard.toUpperCase()}`);
+    this.log(`Configuration: Mode=${isDryRun ? 'DRY-RUN (Safe Review)' : 'AUTOPILOT (Live Submit)'}, Board=${targetBoard.toUpperCase()}, Threshold=${criteria.minimumMatchScore}%`);
 
     try {
       await this.browserManager.launch();
@@ -66,6 +77,7 @@ export class JobAgent extends EventEmitter {
 
       const titles = criteria.targetTitles || ['Supply Chain Manager'];
       const locations = criteria.locations || ['Sarasota, FL'];
+      const sessionEvaluated = new Set();
 
       for (const title of titles) {
         if (!this.isRunning) break;
@@ -85,14 +97,18 @@ export class JobAgent extends EventEmitter {
             if (!this.isRunning) break;
             if (appliedCount >= maxApps) break;
 
+            const jobKey = job.jobId || `${job.title}_${job.company}`.toLowerCase();
+            if (sessionEvaluated.has(jobKey)) continue;
+            sessionEvaluated.add(jobKey);
+
             // Wait if paused
             while (this.isPaused && this.isRunning) {
               await this.browserManager.delay(1000);
             }
 
-            // 1. Check if already applied or skipped
+            // 1. Check if already applied
             if (this.tracker.isApplied(job.jobId, job.url, job.title, job.company)) {
-              this.log(`Skipping "${job.title}" at "${job.company}" - already in tracker.`);
+              this.log(`Skipping "${job.title}" at "${job.company}" - already applied in tracker.`);
               continue;
             }
 
@@ -101,12 +117,7 @@ export class JobAgent extends EventEmitter {
             job.matchScore = match.score;
 
             if (!match.eligible) {
-              this.log(`Skipping "${job.title}" at "${job.company}" (${match.score}% match): ${match.reason}`);
-              this.tracker.recordApplication({
-                ...job,
-                status: 'SKIPPED',
-                notes: match.reason
-              });
+              this.log(`Skipping non-target position "${job.title}" at "${job.company}" (${match.score}% match): ${match.reason}`);
               continue;
             }
 

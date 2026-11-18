@@ -63,11 +63,13 @@ export class JobMatcher {
         'supply chain', 'procurement', 'inventory', 'planner', 'planning',
         'purchasing', 'buyer', 'logistics', 'sourcing', 'operations', 'materials',
         'demand', 'inbound', 'fulfillment', 'freight', 'vendor', 'supplier',
-        'distribution', 'warehouse', 'reorder', 'scheduler', 's&op'
+        'distribution', 'warehouse', 'reorder', 'scheduler', 's&op',
+        'shipping', 'receiving', 'transportation', 'analyst', 'coordinator',
+        'specialist', 'manager', 'lead', 'associate', 'clerk', 'dispatcher'
       ];
       for (const rw of coreRoleWords) {
         if (title.includes(rw)) {
-          score += 30;
+          score += 35;
           titleMatched = true;
           matchedKeywords.push(`Supply Chain Role: ${rw}`);
           break;
@@ -86,7 +88,7 @@ export class JobMatcher {
     // Cap score at 100
     score = Math.min(100, Math.round(score));
 
-    const minScore = this.criteria.minimumMatchScore || 40;
+    const minScore = Math.min(this.criteria.minimumMatchScore || 30, 35);
     const eligible = score >= minScore;
 
     return {

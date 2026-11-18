@@ -34,6 +34,11 @@ export class ApplicationTracker {
     fs.writeFileSync(this.filePath, JSON.stringify(this.applications, null, 2), 'utf8');
   }
 
+  clearSkipped() {
+    this.applications = this.applications.filter(a => a.status === 'SUBMITTED' || a.status === 'DRY_RUN_COMPLETED');
+    this.save();
+  }
+
   isApplied(jobId, jobUrl, title, company) {
     return this.applications.some(app => {
       // Only consider as already applied if it was actually SUBMITTED or DRY_RUN_COMPLETED
