@@ -113,7 +113,7 @@ export class IndeedProvider extends BaseJobProvider {
    * Apply to an Indeed job
    */
   async apply(job, options = {}) {
-    const page = await this.browserManager.getPage();
+    let page = await this.browserManager.getPage();
     const isDryRun = options.dryRun ?? false;
     const resumePath = this.profileManager.getResumePath();
     const profile = this.profileManager.profile;
@@ -285,9 +285,9 @@ export class IndeedProvider extends BaseJobProvider {
 
       const result = this.tracker.recordApplication({
         ...job,
-        status: submitted ? 'SUBMITTED' : (isDryRun ? 'DRY_RUN_COMPLETED' : 'SUBMITTED'),
+        status: submitted ? 'SUBMITTED' : (isDryRun ? 'DRY_RUN_COMPLETED' : 'REQUIRES_VERIFICATION'),
         screenshot: finalScreenshot,
-        notes: isDryRun ? 'Completed in dry-run mode (ready for submission)' : 'Successfully submitted'
+        notes: submitted ? 'Successfully submitted' : (isDryRun ? 'Completed in dry-run mode (ready for submission)' : 'Pending final review or verification')
       });
 
       this.log(`Application completed for "${job.title}" at "${job.company}" with status: ${result.status}`);
@@ -631,6 +631,37 @@ export class IndeedProvider extends BaseJobProvider {
     }
   }
 
+  async handleCaptcha(page, ctx) {
+    try {
+      // 1. Check all frames for reCAPTCHA anchor
+      const allFrames = page && typeof page.frames === 'function' ? page.frames() : [];
+      const rcFrame = allFrames.find(f => {
+        const u = f.url().toLowerCase();
+        return u.includes('recaptcha') || u.includes('google.com/recaptcha');
+      });
+
+      if (rcFrame) {
+        const anchor = await rcFrame.$('#recaptcha-anchor, .recaptcha-checkbox-border, [role="checkbox"]');
+        if (anchor) {
+          const isChecked = await rcFrame.evaluate(el => el.getAttribute('aria-checked') === 'true').catch(() => false);
+          if (!isChecked) {
+            this.log('🛡️ reCAPTCHA detected! Clicking "I\'m not a robot" checkbox...');
+            await this.browserManager.humanClick(anchor, rcFrame);
+            await this.browserManager.delay(2000);
+          }
+        }
+      }
+
+      // 2. Also check in main page/ctx for captcha elements
+      await ctx.evaluate(() => {
+        const captchaEl = document.querySelector('.recaptcha-checkbox, #recaptcha-anchor, [data-testid="captcha"]');
+        if (captchaEl) captchaEl.click();
+      }).catch(() => {});
+    } catch (e) {
+      // non-blocking
+    }
+  }
+
   async handleNavigationButtons(ctx, page, isDryRun, job) {
     // 1. Check if application has already been submitted (e.g. confirmation page visible)
     const isSubmitted = await ctx.evaluate(() => {
@@ -647,41 +678,102 @@ export class IndeedProvider extends BaseJobProvider {
       return { completed: true, submitted: true };
     }
 
-    // 2. Check for Submit button
-    const submitCheck = await ctx.evaluate((dryRun) => {
+    // 2. Check for Submit button (whether enabled or currently disabled due to captcha)
+    const submitBtnInfo = await ctx.evaluate(() => {
       const allButtons = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
       const targetBtn = allButtons.find(b => {
         const t = (b.innerText || b.value || b.getAttribute('aria-label') || '').trim().toLowerCase();
-        const isDisabled = b.disabled || b.getAttribute('aria-disabled') === 'true';
-        if (isDisabled) return false;
         if (t.includes('close') || t.includes('cancel') || t.includes('back') || t.includes('leave')) return false;
         return t.includes('submit your application') ||
                t.includes('submit application') ||
-               t === 'submit' ||
-               t === 'apply';
+               t === 'submit';
       });
 
       if (targetBtn) {
-        if (dryRun) return { found: true, clicked: false, text: targetBtn.innerText.trim() };
-        targetBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        targetBtn.focus();
-        targetBtn.click();
-        targetBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-        return { found: true, clicked: true, text: targetBtn.innerText.trim() };
+        const isDisabled = targetBtn.disabled || targetBtn.getAttribute('aria-disabled') === 'true';
+        return { found: true, disabled: isDisabled, text: targetBtn.innerText.trim() };
       }
-      return { found: false, clicked: false };
-    }, isDryRun);
+      return { found: false, disabled: false, text: '' };
+    });
 
-    if (submitCheck.found) {
+    if (submitBtnInfo.found) {
       if (isDryRun) {
         this.log(`Dry-run mode enabled: Job "${job.title}" is ready for final submission. Skipping click on submit button.`);
         await this.browserManager.takeScreenshot(`dryrun-ready-${job.jobId}`);
         return { completed: true, submitted: false };
       }
 
-      this.log(`🤖 Copilot executing final Submit: "${submitCheck.text}"!`);
-      await this.browserManager.delay(4500);
-      return { completed: true, submitted: true };
+      // If submit button is currently disabled (e.g. waiting for reCAPTCHA)
+      if (submitBtnInfo.disabled) {
+        this.log('🛡️ Submit button is waiting for verification ("I\'m not a robot"). Attempting auto-verification...');
+        await this.handleCaptcha(page, ctx);
+
+        // Wait up to 25 seconds for submit button to unlock
+        let waitSeconds = 0;
+        let isEnabled = false;
+        while (waitSeconds < 25) {
+          await this.browserManager.delay(1200);
+          waitSeconds += 1.2;
+
+          isEnabled = await ctx.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+            const sub = btns.find(b => {
+              const t = (b.innerText || b.value || '').trim().toLowerCase();
+              return t.includes('submit your application') || t.includes('submit application') || t === 'submit';
+            });
+            return sub && !sub.disabled && sub.getAttribute('aria-disabled') !== 'true';
+          });
+
+          if (isEnabled) {
+            this.log('✅ reCAPTCHA verified! Submit button unlocked.');
+            break;
+          }
+
+          if (Math.round(waitSeconds) % 5 === 0) {
+            await this.handleCaptcha(page, ctx);
+          }
+        }
+
+        if (!isEnabled) {
+          this.log('⚠️ Submit button remained locked by reCAPTCHA. Pausing for user manual verification in Chrome...', 'warning');
+          return { completed: false, submitted: false };
+        }
+      }
+
+      // Submit button is enabled: Execute submit
+      const clickSuccess = await ctx.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+        const sub = btns.find(b => {
+          const t = (b.innerText || b.value || '').trim().toLowerCase();
+          return (t.includes('submit your application') || t.includes('submit application') || t === 'submit') &&
+                 !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+        });
+
+        if (sub) {
+          sub.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          sub.focus();
+          sub.click();
+          sub.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+          return true;
+        }
+        return false;
+      });
+
+      if (clickSuccess) {
+        this.log(`🤖 Copilot clicked final Submit: "${submitBtnInfo.text}"!`);
+        await this.browserManager.delay(5000);
+
+        // Confirm submission
+        const confirmed = await ctx.evaluate(() => {
+          const t = document.body.innerText.toLowerCase();
+          return t.includes('your application has been submitted') ||
+                 t.includes('application submitted') ||
+                 t.includes('successfully applied') ||
+                 document.querySelector('[data-testid="ia-SuccessState"], .ia-SuccessState') !== null;
+        });
+
+        return { completed: true, submitted: true };
+      }
     }
 
     // 3. Look for Next / Continue / Review button
