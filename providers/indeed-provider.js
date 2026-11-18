@@ -417,7 +417,7 @@ export class IndeedProvider extends BaseJobProvider {
   async fillScreeningQuestions(ctx) {
     try {
       // Find all form fieldsets or question containers
-      const questions = await ctx.evaluate(() => {
+      const rawQuestions = await ctx.evaluate(() => {
         const items = [];
         const containers = document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"], div[class*="question"]');
 
@@ -426,17 +426,18 @@ export class IndeedProvider extends BaseJobProvider {
           const prompt = legendOrLabel ? legendOrLabel.innerText.trim() : '';
 
           if (prompt) {
-            // Determine type
-            const textInput = container.querySelector('input[type="text"], input:not([type])');
+            const textarea = container.querySelector('textarea');
             const numInput = container.querySelector('input[type="number"]');
+            const textInput = container.querySelector('input[type="text"], input:not([type])');
             const radios = container.querySelectorAll('input[type="radio"]');
             const select = container.querySelector('select');
-            const textarea = container.querySelector('textarea');
 
             let type = 'unknown';
             let options = [];
 
-            if (radios.length > 0) {
+            if (textarea) {
+              type = 'textarea';
+            } else if (radios.length > 0) {
               type = 'radio';
               radios.forEach(r => {
                 const label = container.querySelector(`label[for="${r.id}"]`) || r.parentElement;
@@ -449,8 +450,6 @@ export class IndeedProvider extends BaseJobProvider {
               });
             } else if (numInput) {
               type = 'number';
-            } else if (textarea) {
-              type = 'textarea';
             } else if (textInput) {
               type = 'text';
             }
@@ -461,77 +460,90 @@ export class IndeedProvider extends BaseJobProvider {
         return items;
       });
 
-      for (const q of questions) {
-        const answer = this.profileManager.answerQuestion(q.prompt, q.type, q.options.map(o => o.text || o.value));
-
-        if (q.type === 'radio' && q.options.length > 0) {
-          // Precise option matching
-          const matchedOpt = q.options.find(o =>
-            o.text.toLowerCase() === answer.toLowerCase() ||
-            o.value.toLowerCase() === answer.toLowerCase()
-          ) || q.options.find(o =>
-            o.text.toLowerCase().includes(answer.toLowerCase()) ||
-            o.value.toLowerCase().includes(answer.toLowerCase())
-          ) || q.options[0];
-
-          if (matchedOpt && matchedOpt.id) {
-            this.log(`🤖 Copilot answered radio: "${q.prompt.substring(0, 40)}..." ➔ "${matchedOpt.text || matchedOpt.value}"`);
-            const labelEl = await ctx.$(`label[for="${matchedOpt.id}"]`);
-            if (labelEl) {
-              await this.browserManager.humanClick(labelEl, ctx);
-            } else {
-              const radioEl = await ctx.$(`#${matchedOpt.id}`);
-              if (radioEl) await this.browserManager.humanClick(radioEl, ctx);
-            }
-          }
-        } else if (q.type === 'select' && q.options.length > 0) {
-          const matchedOpt = q.options.find(o =>
-            o.text.toLowerCase() === answer.toLowerCase() ||
-            o.value.toLowerCase() === answer.toLowerCase()
-          ) || q.options.find(o =>
-            o.text.toLowerCase().includes(answer.toLowerCase()) ||
-            o.value.toLowerCase().includes(answer.toLowerCase())
-          ) || q.options[0];
-
-          if (matchedOpt) {
-            this.log(`🤖 Copilot selected dropdown: "${q.prompt.substring(0, 40)}..." ➔ "${matchedOpt.text || matchedOpt.value}"`);
-            const selects = await ctx.$$('select');
-            if (selects[q.index]) {
-              await selects[q.index].select(matchedOpt.value);
-              await ctx.evaluate((el) => {
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-                el.dispatchEvent(new Event('blur', { bubbles: true }));
-              }, selects[q.index]);
-            }
-          }
-        } else if (q.type === 'number' || q.type === 'text') {
-          const inputs = await ctx.$$('input[type="text"], input[type="number"], input:not([type])');
-          if (inputs[q.index]) {
-            const currentVal = await ctx.evaluate(el => el.value, inputs[q.index]);
-            if (!currentVal) {
-              this.log(`🤖 Copilot entered: "${q.prompt.substring(0, 40)}..." ➔ "${answer}"`);
-              await ctx.evaluate((el, val) => {
-                el.focus();
-                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-                if (setter) setter.call(el, val);
-                else el.value = val;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-                el.dispatchEvent(new Event('blur', { bubbles: true }));
-              }, inputs[q.index], answer);
-            }
-          }
-        } else if (q.type === 'textarea') {
-          const textareas = await ctx.$$('textarea');
-          if (textareas[q.index]) {
-            const currentVal = await ctx.evaluate(el => el.value, textareas[q.index]);
-            if (!currentVal) {
-              this.log(`🤖 Copilot filled tailored statement: "${q.prompt.substring(0, 40)}..."`);
-              await this.browserManager.humanType(textareas[q.index], this.profileManager.profile.coverLetter, ctx);
-            }
-          }
-        }
+      // Compute tailored answers based on resume for each question
+      const answersMap = {};
+      for (const q of rawQuestions) {
+        const ans = this.profileManager.answerQuestion(q.prompt, q.type, q.options.map(o => o.text || o.value));
+        answersMap[q.prompt] = ans;
+        this.log(`🤖 Copilot answered: "${q.prompt.substring(0, 45)}..." ➔ "${ans.substring(0, 60)}"`);
       }
+
+      // Apply each answer directly to its specific container in the page DOM
+      await ctx.evaluate((answers) => {
+        const containers = document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"], div[class*="question"]');
+
+        containers.forEach(container => {
+          const legendOrLabel = container.querySelector('legend, label, .ia-Questions-label, [class*="label"], p');
+          const prompt = legendOrLabel ? legendOrLabel.innerText.trim() : '';
+          if (!prompt) return;
+
+          const answer = answers[prompt];
+          if (!answer) return;
+
+          // 1. Textarea
+          const textarea = container.querySelector('textarea');
+          if (textarea && !textarea.value) {
+            textarea.focus();
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+            if (setter) setter.call(textarea, answer);
+            else textarea.value = answer;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+            return;
+          }
+
+          // 2. Select Dropdown
+          const select = container.querySelector('select');
+          if (select) {
+            const options = Array.from(select.options);
+            const matchedOpt = options.find(o =>
+              o.text.toLowerCase() === answer.toLowerCase() ||
+              o.value.toLowerCase() === answer.toLowerCase() ||
+              o.text.toLowerCase().includes(answer.toLowerCase()) ||
+              o.value.toLowerCase().includes(answer.toLowerCase())
+            ) || options[0];
+
+            if (matchedOpt) {
+              select.value = matchedOpt.value;
+              select.dispatchEvent(new Event('change', { bubbles: true }));
+              select.dispatchEvent(new Event('blur', { bubbles: true }));
+            }
+            return;
+          }
+
+          // 3. Radio Buttons
+          const radios = Array.from(container.querySelectorAll('input[type="radio"]'));
+          if (radios.length > 0) {
+            const matchedRadio = radios.find(r => {
+              const lbl = container.querySelector(`label[for="${r.id}"]`) || r.parentElement;
+              const text = (lbl ? lbl.innerText : r.value).toLowerCase();
+              return text === answer.toLowerCase() || text.includes(answer.toLowerCase());
+            }) || radios[0];
+
+            if (matchedRadio) {
+              matchedRadio.click();
+              matchedRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            return;
+          }
+
+          // 4. Text / Number Input
+          const input = container.querySelector('input[type="text"], input[type="number"], input:not([type])');
+          if (input && !input.value) {
+            input.focus();
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            if (setter) setter.call(input, answer);
+            else input.value = answer;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('blur', { bubbles: true }));
+            return;
+          }
+        });
+      }, answersMap);
+
+      await this.browserManager.delay(1200);
     } catch (e) {
       this.log(`Screening questions auto-fill note: ${e.message}`, 'info');
     }

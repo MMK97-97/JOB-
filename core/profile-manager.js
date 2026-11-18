@@ -47,6 +47,19 @@ export class ProfileManager {
   answerQuestion(questionText, inputType = 'text', options = []) {
     const q = questionText.toLowerCase().trim();
 
+    // If input is textarea or open-ended text without options, generate tailored statement based on resume
+    if (inputType === 'textarea' || (inputType === 'text' && (!options || options.length === 0))) {
+      // If it's a short question in a single-line text input that expects a simple Yes/No
+      if (inputType === 'text' && (q.startsWith('are you') || q.startsWith('do you') || q.startsWith('can you') || q.startsWith('will you') || q.startsWith('have you'))) {
+        if (q.includes('sponsorship') || q.includes('felony') || q.includes('terminated') || q.includes('fired') || q.includes('convicted')) {
+          return 'No';
+        }
+        return 'Yes';
+      }
+
+      return this.generateTailoredTextAnswer(questionText);
+    }
+
     // 1. Authorization, Legal & Company Policy
     if (q.includes('legally authorized') || q.includes('authorized to work') || q.includes('eligible to work')) {
       return this.profile.workAuthorization.legallyAuthorizedInUS ? 'Yes' : 'No';
@@ -249,5 +262,162 @@ export class ProfileManager {
     }
 
     return 'Yes';
+  }
+
+  generateTailoredTextAnswer(questionText) {
+    const q = questionText.toLowerCase().trim();
+
+    // 1. Cover letter prompt
+    if (q.includes('cover letter') || q.includes('statement of purpose') || q.includes('letter of interest')) {
+      return this.profile.coverLetter;
+    }
+
+    // 2. Automotive / Mechanical / Parts / Equipment / BOMs
+    if (
+      q.includes('automotive') ||
+      q.includes('auto part') ||
+      q.includes('mechanical') ||
+      q.includes('parts') ||
+      q.includes('bom') ||
+      q.includes('machinery') ||
+      q.includes('equipment') ||
+      q.includes('vehicle') ||
+      q.includes('diesel')
+    ) {
+      return 'Yes, I have direct experience working with automotive and mechanical parts, backed by my B.Tech in Mechanical Engineering. In my supply chain and procurement roles, I have managed cataloging, inventory forecasting, and vendor sourcing for 900+ technical SKUs, maintaining bills of materials (BOMs) and tracking inventory replenishment.';
+    }
+
+    // 3. Attendance / Overtime / Essential to success / Daily attendance / Shifts
+    if (
+      q.includes('show up daily') ||
+      q.includes('daily') ||
+      q.includes('overtime') ||
+      q.includes('attendance') ||
+      q.includes('punctual') ||
+      q.includes('shift') ||
+      q.includes('essential to the success') ||
+      q.includes('weekends') ||
+      q.includes('schedule')
+    ) {
+      return 'Yes, I am fully committed to showing up daily on time, maintaining 100% reliable attendance, and working overtime, weekend, or flexible shifts as needed to ensure operational success and customer fulfillment.';
+    }
+
+    // 4. Why interested / Why hire you / What makes you a good fit / Summary
+    if (
+      q.includes('why are you interested') ||
+      q.includes('why should we hire') ||
+      q.includes('why hire you') ||
+      q.includes('good fit') ||
+      q.includes('tell us about yourself') ||
+      q.includes('summary of qualifications') ||
+      q.includes('why this role') ||
+      q.includes('interest in this position') ||
+      q.includes('describe yourself')
+    ) {
+      return 'With over 5 years of supply chain, procurement, and inventory planning experience, combined with an M.S. in Engineering Management and B.Tech in Mechanical Engineering, I bring proven expertise in optimizing 900+ SKUs, reducing costs by 15%, and maintaining 95% on-time delivery. I combine rigorous analytical capabilities in Excel, SQL, and ERP systems with a proactive approach to drive operational efficiency.';
+    }
+
+    // 5. ERP / SAP / Systems / Software
+    if (
+      q.includes('erp') ||
+      q.includes('sap') ||
+      q.includes('netsuite') ||
+      q.includes('quickbooks') ||
+      q.includes('oracle') ||
+      q.includes('wms') ||
+      q.includes('software')
+    ) {
+      return 'I have over 5 years of hands-on experience utilizing ERP systems (including SAP, NetSuite, and QuickBooks) to manage inventory levels, create and track purchase orders, maintain BOMs, and monitor supplier performance.';
+    }
+
+    // 6. Excel / Reporting / Data Analysis / SQL / Power BI
+    if (
+      q.includes('excel') ||
+      q.includes('spreadsheet') ||
+      q.includes('sql') ||
+      q.includes('power bi') ||
+      q.includes('tableau') ||
+      q.includes('data analysis') ||
+      q.includes('pivot table') ||
+      q.includes('vlookup') ||
+      q.includes('analytics')
+    ) {
+      return 'I possess advanced expertise in Microsoft Excel (including complex PivotTables, Power Query, VLOOKUP, INDEX/MATCH, and forecasting models) as well as SQL and Power BI to extract operational insights and automate reorder analytics.';
+    }
+
+    // 7. Inventory Management / Demand Planning / Forecasting / Cycle Counts
+    if (
+      q.includes('inventory') ||
+      q.includes('demand planning') ||
+      q.includes('forecasting') ||
+      q.includes('cycle count') ||
+      q.includes('safety stock') ||
+      q.includes('reorder') ||
+      q.includes('stockout') ||
+      q.includes('shrinkage')
+    ) {
+      return 'I have 5 years of experience leading inventory management and demand planning, managing $1M+ inventory across 900+ SKUs, calculating safety stock, leading regular cycle counts, and minimizing stockout risk.';
+    }
+
+    // 8. Procurement / Purchasing / Sourcing / Vendor Negotiations
+    if (
+      q.includes('procurement') ||
+      q.includes('purchasing') ||
+      q.includes('sourcing') ||
+      q.includes('vendor') ||
+      q.includes('supplier') ||
+      q.includes('negotiat') ||
+      q.includes('purchase order') ||
+      q.includes(' po ')
+    ) {
+      return 'I have 5 years of procurement experience managing relationships with 80+ suppliers, issuing and auditing purchase orders, and negotiating competitive pricing to achieve 15% cost reductions while maintaining high fulfillment standards.';
+    }
+
+    // 9. Logistics / Warehouse / Shipping / Receiving / Distribution / 3PL
+    if (
+      q.includes('logistics') ||
+      q.includes('warehouse') ||
+      q.includes('shipping') ||
+      q.includes('receiving') ||
+      q.includes('distribution') ||
+      q.includes('3pl') ||
+      q.includes('freight') ||
+      q.includes('inbound') ||
+      q.includes('outbound')
+    ) {
+      return 'I have extensive experience managing inbound and outbound logistics, coordinating freight shipments, supervising receiving and staging workflows, and liaising with 3PL partners to ensure seamless dock-to-stock turnaround.';
+    }
+
+    // 10. Commute / Relocation
+    if (q.includes('commute') || q.includes('relocate') || q.includes('travel') || q.includes('distance') || q.includes('on-site')) {
+      return 'Yes, I am fully prepared to commute daily or relocate immediately for this position.';
+    }
+
+    // 11. Driver's License / Transportation
+    if (q.includes('driver') || q.includes('license') || q.includes('transportation') || q.includes('vehicle')) {
+      return 'Yes, I possess a valid driver\'s license and reliable personal transportation.';
+    }
+
+    // 12. Background Check / Drug Screen
+    if (q.includes('background check') || q.includes('drug screen') || q.includes('drug test')) {
+      return 'Yes, I am fully willing and able to pass a background check and drug screen.';
+    }
+
+    // 13. Work Authorization / Sponsorship
+    if (q.includes('sponsorship') || q.includes('visa')) {
+      return 'No, I do not require sponsorship now or in the future.';
+    }
+    if (q.includes('authorized') || q.includes('legally')) {
+      return 'Yes, I am legally authorized to work in the United States.';
+    }
+
+    // 14. Salary / Pay / Hourly
+    if (q.includes('salary') || q.includes('compensation') || q.includes('pay') || q.includes('rate') || q.includes('hourly')) {
+      if (q.includes('hour') || q.includes('hourly')) return '$45 - $48 / hour';
+      return '$90,000 - $95,000 / year (negotiable based on total benefits)';
+    }
+
+    // 15. Default open-ended response
+    return 'Yes, based on my 5+ years of experience in supply chain, procurement, and inventory operations, along with my technical background in engineering management, I have direct experience handling these responsibilities and am committed to delivering high accuracy, strong vendor collaboration, and dependable performance.';
   }
 }
