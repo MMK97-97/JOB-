@@ -7,7 +7,18 @@ export class JobMatcher {
       'supply chain', 'demand planning', 'inventory planning', 'inventory analyst',
       'procurement', 'purchasing', 'logistics', 's&op', 'reorder', 'inbound',
       'forecast', 'vendor management', 'supplier', 'erp', 'sap', 'excel',
-      'sql', 'power bi', 'tableau', '3pl', 'sku'
+      'sql', 'power bi', 'tableau', '3pl', 'sku', 'bom', 'materials management'
+    ];
+
+    this.defaultNegativeKeywords = [
+      'geomatics', 'surveying', 'surveyor', 'gis', 'nurse', 'nursing',
+      'medical', 'clinical', 'physician', 'dental', 'pharmacy', 'therapist',
+      'restaurant', 'culinary', 'chef', 'cook', 'bartender', 'barista', 'server',
+      'construction superintendent', 'plumber', 'electrician', 'hvac', 'carpenter',
+      'real estate', 'property manager', 'leasing agent',
+      'attorney', 'paralegal', 'legal assistant', 'lawyer',
+      'software engineer', 'frontend developer', 'backend developer', 'devops',
+      'unpaid', 'volunteer'
     ];
   }
 
@@ -28,56 +39,70 @@ export class JobMatcher {
       }
     }
 
-    // 2. Check negative keywords
-    for (const neg of (this.criteria.negativeKeywords || [])) {
-      if (title.includes(neg.toLowerCase()) || description.includes(neg.toLowerCase())) {
+    // 2. Check negative keywords (both user-configured and default domain exclusions)
+    const allNegativeKeywords = [
+      ...(this.criteria.negativeKeywords || []),
+      ...this.defaultNegativeKeywords
+    ];
+
+    for (const neg of allNegativeKeywords) {
+      if (title.includes(neg.toLowerCase())) {
         return {
           eligible: false,
           score: 0,
-          reason: `Matched negative keyword '${neg}'`
+          reason: `Title matched non-target keyword '${neg}'`
         };
       }
     }
 
-    // 3. Match calculation
+    // 3. Match calculation: Title MUST reflect Supply Chain / Procurement / Inventory / Logistics
     let matchedKeywords = [];
-    let score = 45; // base score for passing negative keyword filters
+    let score = 0;
+    let domainMatched = false;
 
-    // Target title matches
+    // Check exact or partial match with user's target titles
     const targetTitles = this.criteria.targetTitles || [];
-    let titleMatched = false;
-
     for (const t of targetTitles) {
       const tLower = t.toLowerCase().trim();
       if (tLower && (title.includes(tLower) || tLower.includes(title))) {
-        score += 35;
-        titleMatched = true;
+        score = 65;
+        domainMatched = true;
         matchedKeywords.push(`Target Title: ${t}`);
         break;
       }
     }
 
-    // Role word match (any supply chain related domain)
-    if (!titleMatched) {
-      const coreRoleWords = [
-        'supply chain', 'procurement', 'inventory', 'planner', 'planning',
-        'purchasing', 'buyer', 'logistics', 'sourcing', 'operations', 'materials',
-        'demand', 'inbound', 'fulfillment', 'freight', 'vendor', 'supplier',
-        'distribution', 'warehouse', 'reorder', 'scheduler', 's&op',
-        'shipping', 'receiving', 'transportation', 'analyst', 'coordinator',
-        'specialist', 'manager', 'lead', 'associate', 'clerk', 'dispatcher'
+    // Check core supply chain domain keywords in title
+    if (!domainMatched) {
+      const supplyChainDomains = [
+        'supply chain', 'procurement', 'inventory', 'purchasing', 'buyer',
+        'logistics', 'sourcing', 'materials', 'demand planner', 'demand planning',
+        's&op', 'fulfillment', 'freight', 'vendor management', 'distribution',
+        'warehouse', 'reorder', 'inbound logistics', 'shipping and receiving',
+        'inventory control', 'material planner', 'operations analyst', 'contracts specialist'
       ];
-      for (const rw of coreRoleWords) {
-        if (title.includes(rw)) {
-          score += 35;
-          titleMatched = true;
-          matchedKeywords.push(`Supply Chain Role: ${rw}`);
+
+      for (const domain of supplyChainDomains) {
+        if (title.includes(domain)) {
+          score = 60;
+          domainMatched = true;
+          matchedKeywords.push(`Supply Chain Domain: ${domain}`);
           break;
         }
       }
     }
 
-    // Keyword hits in full card text
+    // If title has NO supply chain relevance, skip immediately
+    if (!domainMatched) {
+      return {
+        eligible: false,
+        score: 0,
+        reason: 'Title does not match Supply Chain, Procurement, Buyer, or Inventory domains',
+        matchedKeywords: []
+      };
+    }
+
+    // 4. Keyword hits in full description / card text (+5 points each, up to 100)
     for (const kw of this.coreKeywords) {
       if (fullText.includes(kw)) {
         score += 5;
@@ -85,9 +110,7 @@ export class JobMatcher {
       }
     }
 
-    // Cap score at 100
     score = Math.min(100, Math.round(score));
-
     const minScore = Math.min(this.criteria.minimumMatchScore || 30, 35);
     const eligible = score >= minScore;
 

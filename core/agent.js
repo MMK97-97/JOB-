@@ -176,14 +176,20 @@ export class JobAgent extends EventEmitter {
 
             this.log(`🎯 Candidate Match: "${job.title}" at "${job.company}" (${match.score}% match - keywords: ${match.matchedKeywords.join(', ')})`);
 
-            // 3. Apply to job
-            const applyResult = await provider.apply(job, {
-              dryRun: isDryRun,
-              isCancelled: () => !this.isRunning,
-              isPaused: () => this.isPaused
-            });
+            // 3. Apply to job with isolated fault tolerance (single job error never crashes the session)
+            let applyResult = null;
+            try {
+              applyResult = await provider.apply(job, {
+                dryRun: isDryRun,
+                isCancelled: () => !this.isRunning,
+                isPaused: () => this.isPaused
+              });
+            } catch (jobErr) {
+              this.log(`⚠️ Handled non-fatal error applying to "${job.title}": ${jobErr.message}. Advancing to next job.`, 'warning');
+              applyResult = { status: 'FAILED', notes: jobErr.message };
+            }
 
-            if (applyResult.status === 'SUBMITTED' || applyResult.status === 'DRY_RUN_COMPLETED') {
+            if (applyResult && (applyResult.status === 'SUBMITTED' || applyResult.status === 'DRY_RUN_COMPLETED')) {
               appliedCount++;
               this.log(`✅ [${appliedCount}/${maxApps}] Processed application for "${job.title}" at "${job.company}". Status: ${applyResult.status}`);
             }

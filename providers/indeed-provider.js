@@ -142,12 +142,15 @@ export class IndeedProvider extends BaseJobProvider {
     this.emit('status', { jobId: job.jobId, status: 'STARTING', job });
 
     try {
-      // Clean up extra tabs/popups so only 1 main tab is active
+      // Safely close any orphaned popups or extra tabs, keeping the target application page active
       if (this.browserManager.browser) {
-        const openPages = await this.browserManager.browser.pages();
-        for (let i = 1; i < openPages.length; i++) {
-          await openPages[i].close().catch(() => {});
+        const openPages = await this.browserManager.browser.pages().catch(() => []);
+        for (const p of openPages) {
+          if (p !== page && !p.isClosed()) {
+            await p.close().catch(() => {});
+          }
         }
+        this.browserManager.activePage = page;
       }
 
       try {
@@ -337,9 +340,12 @@ export class IndeedProvider extends BaseJobProvider {
       return result;
 
     } catch (err) {
-      await this.browserManager.dismissBeforeUnload(page);
+      await this.browserManager.dismissBeforeUnload(page).catch(() => {});
       this.log(`Error applying for "${job.title}": ${err.message}`, 'error');
-      const errScreenshot = await this.browserManager.takeScreenshot(`error-${job.jobId}`);
+      let errScreenshot = null;
+      try {
+        errScreenshot = await this.browserManager.takeScreenshot(`error-${job.jobId}`);
+      } catch (e) {}
       return this.tracker.recordApplication({
         ...job,
         status: 'FAILED',

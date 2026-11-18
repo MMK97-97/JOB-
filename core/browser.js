@@ -204,13 +204,19 @@ export class BrowserManager {
   async getPage() {
     if (!this.browser) await this.launch();
     if (!this.activePage || this.activePage.isClosed()) {
-      this.activePage = await this.browser.newPage();
-      this.activePage.on('dialog', async dialog => {
-        try {
-          if (dialog.type() === 'beforeunload') await dialog.dismiss();
-          else await dialog.accept();
-        } catch (e) {}
-      });
+      const pages = await this.browser.pages().catch(() => []);
+      const openPage = pages.find(p => p && !p.isClosed());
+      if (openPage) {
+        this.activePage = openPage;
+      } else {
+        this.activePage = await this.browser.newPage();
+        this.activePage.on('dialog', async dialog => {
+          try {
+            if (dialog.type() === 'beforeunload') await dialog.dismiss();
+            else await dialog.accept();
+          } catch (e) {}
+        });
+      }
     }
     return this.activePage;
   }
@@ -376,16 +382,34 @@ export class BrowserManager {
     await this.delay(duration);
   }
 
-  async takeScreenshot(name = 'action') {
-    if (!this.activePage) return null;
-    const screenshotDir = path.resolve(__dirname, '../data/screenshots');
-    if (!fs.existsSync(screenshotDir)) {
-      fs.mkdirSync(screenshotDir, { recursive: true });
+  async takeScreenshot(name = 'action', targetPage = null) {
+    try {
+      if (!this.browser) return null;
+      let page = targetPage || this.activePage;
+
+      // If page is null or closed, attempt to locate an open page
+      if (!page || page.isClosed()) {
+        const pages = await this.browser.pages().catch(() => []);
+        page = pages.find(p => p && !p.isClosed()) || null;
+        if (page) this.activePage = page;
+      }
+
+      if (!page || page.isClosed()) return null;
+
+      const screenshotDir = path.resolve(__dirname, '../data/screenshots');
+      if (!fs.existsSync(screenshotDir)) {
+        fs.mkdirSync(screenshotDir, { recursive: true });
+      }
+
+      const filename = `${name}-${Date.now()}.png`;
+      const fullPath = path.join(screenshotDir, filename);
+
+      await page.screenshot({ path: fullPath, fullPage: false }).catch(() => null);
+      return fs.existsSync(fullPath) ? fullPath : null;
+    } catch (e) {
+      // Never crash the agent when capturing a screenshot
+      return null;
     }
-    const filename = `${name}-${Date.now()}.png`;
-    const fullPath = path.join(screenshotDir, filename);
-    await this.activePage.screenshot({ path: fullPath, fullPage: false });
-    return fullPath;
   }
 
   delay(ms) {

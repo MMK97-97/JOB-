@@ -190,7 +190,10 @@ export class LinkedInProvider extends BaseJobProvider {
 
     } catch (err) {
       this.log(`Error on LinkedIn: ${err.message}`, 'error');
-      const errShot = await this.browserManager.takeScreenshot(`li-error-${job.jobId}`);
+      let errShot = null;
+      try {
+        errShot = await this.browserManager.takeScreenshot(`li-error-${job.jobId}`);
+      } catch (e) {}
       return this.tracker.recordApplication({
         ...job,
         status: 'FAILED',
