@@ -124,7 +124,11 @@ export class JobAgent extends EventEmitter {
             this.log(`🎯 Candidate Match: "${job.title}" at "${job.company}" (${match.score}% match - keywords: ${match.matchedKeywords.join(', ')})`);
 
             // 3. Apply to job
-            const applyResult = await provider.apply(job, { dryRun: isDryRun });
+            const applyResult = await provider.apply(job, {
+              dryRun: isDryRun,
+              isCancelled: () => !this.isRunning,
+              isPaused: () => this.isPaused
+            });
 
             if (applyResult.status === 'SUBMITTED' || applyResult.status === 'DRY_RUN_COMPLETED') {
               appliedCount++;

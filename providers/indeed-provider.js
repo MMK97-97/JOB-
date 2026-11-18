@@ -229,6 +229,19 @@ export class IndeedProvider extends BaseJobProvider {
       let submitted = false;
 
       while (step < maxSteps) {
+        // Immediate check for Stop signal
+        if (options.isCancelled && options.isCancelled()) {
+          this.log('🛑 Application stopped by user.', 'warning');
+          if (popupPage && !popupPage.isClosed()) await popupPage.close().catch(() => {});
+          return { status: 'CANCELLED', notes: 'Stopped by user' };
+        }
+
+        // Active pause loop
+        while (options.isPaused && options.isPaused()) {
+          if (options.isCancelled && options.isCancelled()) break;
+          await this.browserManager.delay(500);
+        }
+
         step++;
         this.log(`🤖 Copilot processing application step ${step}...`);
 
@@ -267,7 +280,7 @@ export class IndeedProvider extends BaseJobProvider {
         await this.fillEEOFields(ctx, profile);
 
         // 6. Look for Next / Continue / Review / Submit button
-        const actionResult = await this.handleNavigationButtons(ctx, applyPage, isDryRun, job);
+        const actionResult = await this.handleNavigationButtons(ctx, applyPage, isDryRun, job, options);
 
         if (actionResult.completed) {
           submitted = actionResult.submitted;
@@ -662,7 +675,7 @@ export class IndeedProvider extends BaseJobProvider {
     }
   }
 
-  async handleNavigationButtons(ctx, page, isDryRun, job) {
+  async handleNavigationButtons(ctx, page, isDryRun, job, options = {}) {
     // 1. Check if application has already been submitted (e.g. confirmation page visible)
     const isSubmitted = await ctx.evaluate(() => {
       const text = document.body.innerText.toLowerCase();
@@ -712,6 +725,16 @@ export class IndeedProvider extends BaseJobProvider {
         let waitSeconds = 0;
         let isEnabled = false;
         while (waitSeconds < 25) {
+          if (options.isCancelled && options.isCancelled()) {
+            this.log('🛑 Cancelled by user Stop request during verification.', 'warning');
+            return { completed: true, submitted: false };
+          }
+
+          while (options.isPaused && options.isPaused()) {
+            if (options.isCancelled && options.isCancelled()) break;
+            await this.browserManager.delay(500);
+          }
+
           await this.browserManager.delay(1200);
           waitSeconds += 1.2;
 

@@ -103,7 +103,13 @@ function handleAgentEvent(event, data) {
       break;
 
     case 'agent-state':
-      updateAgentStatus(data.state === 'RUNNING', data.state === 'PAUSED');
+      if (data.state === 'PAUSED') {
+        updateAgentStatus(true, true);
+      } else if (data.state === 'RUNNING') {
+        updateAgentStatus(true, false);
+      } else {
+        updateAgentStatus(false, false);
+      }
       break;
 
     case 'log':
@@ -142,26 +148,24 @@ function updateAgentStatus(isRunning, isPaused) {
   const btnPause = document.getElementById('btnPause');
   const btnStop = document.getElementById('btnStop');
 
-  if (isRunning) {
-    if (isPaused) {
-      statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
-      statusPulse.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
-      statusText.textContent = 'Paused';
-      statusText.className = 'text-xs font-medium text-amber-400 uppercase tracking-wider';
-      btnStart.disabled = true;
-      btnPause.disabled = false;
-      btnPause.innerHTML = '<i class="fa-solid fa-play text-xs"></i><span>Resume</span>';
-      btnStop.disabled = false;
-    } else {
-      statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-emerald-500';
-      statusPulse.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
-      statusText.textContent = 'Running';
-      statusText.className = 'text-xs font-medium text-emerald-400 uppercase tracking-wider';
-      btnStart.disabled = true;
-      btnPause.disabled = false;
-      btnPause.innerHTML = '<i class="fa-solid fa-pause text-xs"></i><span>Pause</span>';
-      btnStop.disabled = false;
-    }
+  if (isPaused) {
+    statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
+    statusPulse.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+    statusText.textContent = 'Paused';
+    statusText.className = 'text-xs font-medium text-amber-400 uppercase tracking-wider';
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnPause.innerHTML = '<i class="fa-solid fa-play text-xs"></i><span>Resume</span>';
+    btnStop.disabled = false;
+  } else if (isRunning) {
+    statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-emerald-500';
+    statusPulse.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+    statusText.textContent = 'Running';
+    statusText.className = 'text-xs font-medium text-emerald-400 uppercase tracking-wider';
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnPause.innerHTML = '<i class="fa-solid fa-pause text-xs"></i><span>Pause</span>';
+    btnStop.disabled = false;
   } else {
     statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-slate-500';
     statusPulse.className = 'absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-0';
@@ -169,6 +173,7 @@ function updateAgentStatus(isRunning, isPaused) {
     statusText.className = 'text-xs font-medium text-slate-300 uppercase tracking-wider';
     btnStart.disabled = false;
     btnPause.disabled = true;
+    btnPause.innerHTML = '<i class="fa-solid fa-pause text-xs"></i><span>Pause</span>';
     btnStop.disabled = true;
   }
 }
@@ -615,14 +620,25 @@ function bindEvents() {
 
   document.getElementById('btnPause').addEventListener('click', async () => {
     const btn = document.getElementById('btnPause');
-    const isPaused = btn.innerText.includes('Resume');
-    const endpoint = isPaused ? '/api/agent/resume' : '/api/agent/pause';
-    await fetch(endpoint, { method: 'POST' });
+    const isCurrentlyPaused = btn.innerText.includes('Resume');
+    const endpoint = isCurrentlyPaused ? '/api/agent/resume' : '/api/agent/pause';
+    // Immediate visual feedback
+    updateAgentStatus(true, !isCurrentlyPaused);
+    try {
+      await fetch(endpoint, { method: 'POST' });
+    } catch (e) {
+      console.error('Pause/Resume API error:', e);
+    }
   });
 
   document.getElementById('btnStop').addEventListener('click', async () => {
-    if (confirm('Are you sure you want to stop the autonomous agent?')) {
+    // Immediate visual feedback
+    updateAgentStatus(false, false);
+    appendLog('Stop requested by user. Terminating active tasks...', 'warning');
+    try {
       await fetch('/api/agent/stop', { method: 'POST' });
+    } catch (e) {
+      console.error('Stop API error:', e);
     }
   });
 

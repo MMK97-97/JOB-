@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "app_1794973071285_46izsr",
+    "jobId": "9b00a3287b112834",
+    "title": "Commodity Manager",
+    "company": "MI Windows and Doors LLC",
+    "location": "North Venice, FL 34275",
+    "url": "https://www.indeed.com/viewjob?jk=9b00a3287b112834",
+    "board": "indeed",
+    "matchScore": 80,
+    "salary": "Not listed",
+    "status": "REQUIRES_VERIFICATION",
+    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-9b00a3287b112834-1794973071142.png",
+    "appliedAt": "2026-11-18T03:37:51.285Z",
+    "notes": "Pending final review or verification"
+  },
+  {
+    "id": "app_1794972935983_zdawn1",
+    "jobId": "395baa90c895631b",
+    "title": "Order Processing Specialist II - Diesel & Automotive Parts",
+    "company": "DalesSuperStore.com",
+    "location": "Sarasota, FL 34240",
+    "url": "https://www.indeed.com/viewjob?jk=395baa90c895631b",
+    "board": "indeed",
+    "matchScore": 80,
+    "salary": "Overtime",
+    "status": "SUBMITTED",
+    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-395baa90c895631b-1794972935900.png",
+    "appliedAt": "2026-11-18T03:35:35.983Z",
+    "notes": "Successfully submitted"
+  }
+]
