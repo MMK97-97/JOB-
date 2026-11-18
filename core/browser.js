@@ -2,13 +2,16 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import path from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Enable stealth plugin
-puppeteer.use(StealthPlugin());
+// Enable stealth plugin with authentic native User-Agent & Client Hints preservation
+const stealth = StealthPlugin();
+stealth.enabledEvasions.delete('user-agent-override');
+puppeteer.use(stealth);
 
 // QWERTY keyboard proximity map for authentic human typo & self-correction emulation
 const QWERTY_NEIGHBORS = {
@@ -35,7 +38,24 @@ export class BrowserManager {
     this.cursorPos = { x: 350, y: 350 };
   }
 
-  async launch() {
+  _freeProfileLocks() {
+    try {
+      if (process.platform === 'win32') {
+        const norm = path.normalize(this.options.userDataDir).toLowerCase();
+        const json = execSync('powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name = \'chrome.exe\'\\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 3000 }).trim();
+        if (json) {
+          const procs = json.startsWith('[') ? JSON.parse(json) : [JSON.parse(json)];
+          for (const p of procs) {
+            if (p.CommandLine && p.CommandLine.toLowerCase().includes(norm)) {
+              execSync(`taskkill /F /PID ${p.ProcessId} 2>nul`);
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  async launch(retry = false) {
     if (this.browser) return this.browser;
 
     // Ensure user data dir exists
@@ -65,10 +85,7 @@ export class BrowserManager {
       const pages = await this.browser.pages();
       this.activePage = pages.length > 0 ? pages[0] : await this.browser.newPage();
 
-      // Configure viewport & realistic User Agent
-      await this.activePage.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-      );
+      // Native User-Agent & Client Hints (Chrome 157) are preserved authentically
 
       // Helper to attach safe dialog handler
       const attachSafeDialogHandler = (targetPage) => {
@@ -87,19 +104,6 @@ export class BrowserManager {
         });
       };
 
-      // Set clean hardware specs (never monkey-patch EventTarget or addEventListener)
-      await this.activePage.evaluateOnNewDocument(() => {
-        try {
-          delete Object.getPrototypeOf(navigator).webdriver;
-        } catch (e) {}
-        try {
-          Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-          Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-          Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-          Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        } catch (e) {}
-      });
-
       attachSafeDialogHandler(this.activePage);
 
       // Listen for popup tabs/windows and attach handlers immediately
@@ -114,13 +118,22 @@ export class BrowserManager {
 
       return this.browser;
     } catch (err) {
-      console.error('Failed to launch browser with Chrome executable. Falling back to default Chromium...', err.message);
-      // Fallback without executablePath if path fails
+      if (!retry && (err.message.includes('ProcessSingleton') || err.message.includes('Lock file'))) {
+        console.log('[BROWSER] Profile lock detected from an earlier session. Freeing orphaned browser process and retrying...');
+        this._freeProfileLocks();
+        await new Promise(r => setTimeout(r, 800));
+        return this.launch(true);
+      }
+
+      console.error('Failed to launch browser with Chrome executable. Retrying with fallback options...', err.message);
+      // Fallback with verified executablePath
       this.browser = await puppeteer.launch({
         headless: this.options.headless ? 'new' : false,
+        executablePath: this.options.chromePath,
         userDataDir: this.options.userDataDir,
         args: launchArgs,
-        defaultViewport: null
+        defaultViewport: null,
+        ignoreDefaultArgs: ['--enable-automation']
       });
       const pages = await this.browser.pages();
       this.activePage = pages.length > 0 ? pages[0] : await this.browser.newPage();

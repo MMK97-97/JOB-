@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node index.js --dashboard",
     "dashboard": "node index.js --dashboard",
+    "login": "node index.js --login",
     "agent": "node index.js --run",
     "dry-run": "node index.js --run --dry-run",
     "test-browser": "node scripts/test-browser.js"

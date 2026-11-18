@@ -648,11 +648,18 @@ export class IndeedProvider extends BaseJobProvider {
 
         try {
           if (q.type === 'text' || q.type === 'number') {
-            const inputHandle = await ctx.evaluateHandle((idx) => {
-              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
-              const c = items[idx];
-              return c ? c.querySelector('input[type="text"], input[type="number"], input:not([type])') : null;
-            }, q.index).catch(() => null);
+            const inputHandle = await ctx.evaluateHandle((promptText, idx) => {
+              const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const matchedContainer = (normTarget && containers.find(c => {
+                const lbl = c.querySelector('legend, .ia-Questions-label, [class*="label"], p, label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || containers[idx];
+
+              return matchedContainer ? matchedContainer.querySelector('input[type="text"], input[type="number"], input:not([type])') : null;
+            }, q.prompt, q.index).catch(() => null);
 
             if (inputHandle && inputHandle.asElement()) {
               await this.browserManager.humanType(inputHandle.asElement(), finalVal, ctx);
@@ -660,19 +667,33 @@ export class IndeedProvider extends BaseJobProvider {
           } else if (q.type === 'textarea') {
             const isBilingual = q.prompt.toLowerCase().includes('bilingual') || q.prompt.toLowerCase().includes('spanish');
             const val = isBilingual ? 'No' : answer;
-            const taHandle = await ctx.evaluateHandle((idx) => {
-              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
-              const c = items[idx];
-              return c ? c.querySelector('textarea') : null;
-            }, q.index).catch(() => null);
+            const taHandle = await ctx.evaluateHandle((promptText, idx) => {
+              const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const matchedContainer = (normTarget && containers.find(c => {
+                const lbl = c.querySelector('legend, .ia-Questions-label, [class*="label"], p, label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || containers[idx];
+
+              return matchedContainer ? matchedContainer.querySelector('textarea') : null;
+            }, q.prompt, q.index).catch(() => null);
 
             if (taHandle && taHandle.asElement()) {
               await this.browserManager.humanType(taHandle.asElement(), val, ctx);
             }
           } else if (q.type === 'radio') {
-            const radioHandle = await ctx.evaluateHandle((idx, ans) => {
-              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
-              const c = items[idx];
+            const radioHandle = await ctx.evaluateHandle((promptText, idx, ans) => {
+              const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const c = (normTarget && containers.find(cont => {
+                const lbl = cont.querySelector('legend, .ia-Questions-label, [class*="label"], p, label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || containers[idx];
+
               if (!c) return null;
               const radios = Array.from(c.querySelectorAll('input[type="radio"]'));
               const wantYes = ans.toLowerCase() === 'yes';
@@ -686,17 +707,24 @@ export class IndeedProvider extends BaseJobProvider {
                 if (text.includes(ans.toLowerCase()) || val.includes(ans.toLowerCase())) return labelEl || r;
               }
               return null;
-            }, q.index, answer).catch(() => null);
+            }, q.prompt, q.index, answer).catch(() => null);
 
             if (radioHandle && radioHandle.asElement()) {
               await this.browserManager.humanClick(radioHandle.asElement(), ctx);
             }
           } else if (q.type === 'checkbox') {
-            const cbHandle = await ctx.evaluateHandle((idx) => {
-              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
-              const c = items[idx];
-              return c ? c.querySelector('input[type="checkbox"]') : null;
-            }, q.index).catch(() => null);
+            const cbHandle = await ctx.evaluateHandle((promptText, idx) => {
+              const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const matchedContainer = (normTarget && containers.find(c => {
+                const lbl = c.querySelector('legend, .ia-Questions-label, [class*="label"], p, label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || containers[idx];
+
+              return matchedContainer ? matchedContainer.querySelector('input[type="checkbox"]') : null;
+            }, q.prompt, q.index).catch(() => null);
 
             if (cbHandle && cbHandle.asElement()) {
               await this.browserManager.humanClick(cbHandle.asElement(), ctx);

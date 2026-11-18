@@ -167,6 +167,16 @@ function updateAgentStatus(isRunning, isPaused) {
   const btnStart = document.getElementById('btnStart');
   const btnPause = document.getElementById('btnPause');
   const btnStop = document.getElementById('btnStop');
+  const btnOpenLogin = document.getElementById('btnOpenLogin');
+
+  if (btnOpenLogin) {
+    btnOpenLogin.disabled = isRunning || isPaused;
+    if (isRunning || isPaused) {
+      btnOpenLogin.classList.add('opacity-40', 'cursor-not-allowed');
+    } else {
+      btnOpenLogin.classList.remove('opacity-40', 'cursor-not-allowed');
+    }
+  }
 
   if (isPaused) {
     statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
@@ -807,6 +817,29 @@ async function refreshApplications() {
 }
 
 function bindEvents() {
+  const btnOpenLogin = document.getElementById('btnOpenLogin');
+  if (btnOpenLogin) {
+    btnOpenLogin.addEventListener('click', async () => {
+      const isCloud = window.location.hostname.includes('github.io');
+      if (isCloud) {
+        alert('Session login is only available when running locally on your computer (http://localhost:3000).');
+        return;
+      }
+      try {
+        appendLog('Opening persistent Chrome browser for Indeed & LinkedIn sign-in...', 'info');
+        const res = await fetch('/api/browser/open-login', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || 'Failed to open login browser');
+        } else {
+          appendLog('👉 Chrome window opened! Log in to Indeed and LinkedIn, then close Chrome or return here.', 'info');
+        }
+      } catch (err) {
+        alert('Error launching login browser: ' + err.message);
+      }
+    });
+  }
+
   document.getElementById('btnStart').addEventListener('click', async () => {
     const isCloud = window.location.hostname.includes('github.io');
     if (isCloud) {

@@ -344,11 +344,17 @@ export class LinkedInProvider extends BaseJobProvider {
 
         try {
           if (q.type === 'text' || q.type === 'number') {
-            const inputHandle = await page.evaluateHandle((idx) => {
+            const inputHandle = await page.evaluateHandle((promptText, idx) => {
               const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
-              const s = sections[idx];
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const s = (normTarget && sections.find(sec => {
+                const lbl = sec.querySelector('label, legend, .fb-dash-form-element__label, .jobs-easy-apply-form-element__label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || sections[idx];
+
               return s ? s.querySelector('input[type="text"], input[type="number"], input:not([type])') : null;
-            }, q.index).catch(() => null);
+            }, q.prompt, q.index).catch(() => null);
 
             if (inputHandle && inputHandle.asElement()) {
               const isNumeric = q.type === 'number' || q.prompt.toLowerCase().includes('years');
@@ -356,19 +362,31 @@ export class LinkedInProvider extends BaseJobProvider {
               await this.browserManager.humanType(inputHandle.asElement(), finalVal, page);
             }
           } else if (q.type === 'textarea') {
-            const taHandle = await page.evaluateHandle((idx) => {
+            const taHandle = await page.evaluateHandle((promptText, idx) => {
               const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
-              const s = sections[idx];
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const s = (normTarget && sections.find(sec => {
+                const lbl = sec.querySelector('label, legend, .fb-dash-form-element__label, .jobs-easy-apply-form-element__label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || sections[idx];
+
               return s ? s.querySelector('textarea') : null;
-            }, q.index).catch(() => null);
+            }, q.prompt, q.index).catch(() => null);
 
             if (taHandle && taHandle.asElement()) {
               await this.browserManager.humanType(taHandle.asElement(), answer, page);
             }
           } else if (q.type === 'radio') {
-            const rHandle = await page.evaluateHandle((idx, ans) => {
+            const rHandle = await page.evaluateHandle((promptText, idx, ans) => {
               const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
-              const s = sections[idx];
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const s = (normTarget && sections.find(sec => {
+                const lbl = sec.querySelector('label, legend, .fb-dash-form-element__label, .jobs-easy-apply-form-element__label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || sections[idx];
+
               if (!s) return null;
               const radios = Array.from(s.querySelectorAll('input[type="radio"]'));
               const wantYes = ans.toLowerCase() === 'yes';
@@ -382,17 +400,23 @@ export class LinkedInProvider extends BaseJobProvider {
                 if (text.includes(ans.toLowerCase()) || val.includes(ans.toLowerCase())) return rLbl || r;
               }
               return null;
-            }, q.index, answer).catch(() => null);
+            }, q.prompt, q.index, answer).catch(() => null);
 
             if (rHandle && rHandle.asElement()) {
               await this.browserManager.humanClick(rHandle.asElement(), page);
             }
           } else if (q.type === 'checkbox') {
-            const cbHandle = await page.evaluateHandle((idx) => {
+            const cbHandle = await page.evaluateHandle((promptText, idx) => {
               const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
-              const s = sections[idx];
+              const normTarget = (promptText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const s = (normTarget && sections.find(sec => {
+                const lbl = sec.querySelector('label, legend, .fb-dash-form-element__label, .jobs-easy-apply-form-element__label');
+                const t = (lbl ? lbl.innerText : '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return t && (t === normTarget || t.includes(normTarget) || normTarget.includes(t));
+              })) || sections[idx];
+
               return s ? s.querySelector('input[type="checkbox"]') : null;
-            }, q.index).catch(() => null);
+            }, q.prompt, q.index).catch(() => null);
 
             if (cbHandle && cbHandle.asElement()) {
               await this.browserManager.humanClick(cbHandle.asElement(), page);

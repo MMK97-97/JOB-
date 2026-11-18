@@ -165,6 +165,24 @@ export function createServer(port = 3000) {
     res.json({ success: true, message: 'Agent resumed' });
   });
 
+  app.post('/api/browser/open-login', async (req, res) => {
+    if (agent.isRunning) {
+      return res.status(400).json({ error: 'Cannot launch login browser while agent is actively running.' });
+    }
+    try {
+      await agent.browserManager.launch();
+      const page = await agent.browserManager.getPage();
+      await page.goto('https://secure.indeed.com/auth', { waitUntil: 'domcontentloaded' }).catch(() => {});
+      try {
+        const liPage = await agent.browserManager.browser.newPage();
+        await liPage.goto('https://www.linkedin.com/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
+      } catch (e) {}
+      res.json({ success: true, message: 'Chrome launched with your persistent profile. Log in to Indeed and LinkedIn, then return here.' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   wss.on('connection', ws => {
     ws.send(JSON.stringify({
       event: 'initial-state',

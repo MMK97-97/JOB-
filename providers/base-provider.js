@@ -48,6 +48,7 @@ export class BaseJobProvider extends EventEmitter {
       const cfIframe = await page.$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]').catch(() => null);
       if (cfIframe) {
         detectedType = 'Cloudflare Turnstile';
+        await cfIframe.scrollIntoViewIfNeeded().catch(() => {});
         const box = await cfIframe.boundingBox().catch(() => null);
         if (box) {
           // Precise coordinate of the "Verify you are human" checkbox inside the Cloudflare widget:
@@ -59,7 +60,7 @@ export class BaseJobProvider extends EventEmitter {
           await this.browserManager.delay(Math.floor(Math.random() * 150) + 150);
           await page.mouse.click(clickX, clickY).catch(() => {});
           checkboxClicked = true;
-          await this.browserManager.delay(2500);
+          await this.browserManager.delay(2000);
         }
       }
 
@@ -68,12 +69,13 @@ export class BaseJobProvider extends EventEmitter {
         const u = f.url().toLowerCase();
         if (u.includes('challenges.cloudflare.com') || u.includes('turnstile')) {
           detectedType = 'Cloudflare Turnstile';
-          if (!checkboxClicked) {
-            const cfCheckbox = await f.$('input[type="checkbox"], #cf-stage, .ctp-checkbox-label, label, span.mark').catch(() => null);
-            if (cfCheckbox) {
+          const cfCheckbox = await f.$('input[type="checkbox"], #cf-stage, .ctp-checkbox-label, label, span.mark').catch(() => null);
+          if (cfCheckbox) {
+            const isChecked = await f.evaluate(el => el.getAttribute('aria-checked') === 'true' || el.checked).catch(() => false);
+            if (!isChecked) {
               await this.browserManager.humanClick(cfCheckbox, f);
               checkboxClicked = true;
-              await this.browserManager.delay(2200);
+              await this.browserManager.delay(2000);
             }
           }
         }
@@ -148,7 +150,12 @@ export class BaseJobProvider extends EventEmitter {
     });
 
     // Bring browser page into focus so candidate sees the challenge immediately
-    await page.evaluate(() => window.focus()).catch(() => {});
+    try {
+      if (page && !page.isClosed()) {
+        await page.bringToFront().catch(() => {});
+        await page.evaluate(() => window.focus()).catch(() => {});
+      }
+    } catch (e) {}
 
     const checkStatus = async () => {
       // 1. Submit button unlocked
