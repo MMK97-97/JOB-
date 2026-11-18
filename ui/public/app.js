@@ -149,8 +149,12 @@ function handleAgentEvent(event, data) {
       break;
 
     case 'captcha-challenge':
-      appendLog(`🛡️ Human verification challenge detected (${data.type}). Please complete it in Chrome.`, 'warning');
+      appendLog(`🛡️ Human verification challenge detected (${data.type}). Mirroring live picture to dashboard.`, 'warning');
       showCaptchaModal(data);
+      break;
+
+    case 'captcha-update':
+      updateCaptchaLivePreview(data);
       break;
 
     case 'captcha-resolved':
@@ -426,6 +430,54 @@ function showCaptchaModal(data) {
   document.getElementById('captchaJobSubtitle').textContent = jobInfo;
   document.getElementById('captchaTypeName').textContent = data.type || 'Google reCAPTCHA / Verification Challenge';
 
+  const badge = document.getElementById('captchaChallengeBadge');
+  if (badge) {
+    if (data.isPictureChallenge) {
+      badge.textContent = data.isTextCaptcha ? 'Text CAPTCHA Picture' : 'Picture Puzzle';
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  const instrEl = document.getElementById('captchaInstructionText');
+  if (instrEl) {
+    if (data.instructions) {
+      instrEl.innerHTML = `<span class="text-amber-300 font-semibold">Challenge Instructions:</span> ${data.instructions}`;
+    } else {
+      instrEl.textContent = 'The job portal presented a verification challenge. Please complete the verification puzzle in Chrome or review the live picture below.';
+    }
+  }
+
+  // Live Picture display
+  const imgEl = document.getElementById('captchaImagePreview');
+  const placeholder = document.getElementById('captchaImagePlaceholder');
+  if (data.screenshotUrl && imgEl) {
+    imgEl.src = data.screenshotUrl;
+    imgEl.onload = () => {
+      imgEl.classList.remove('hidden');
+      if (placeholder) placeholder.classList.add('hidden');
+    };
+  } else if (imgEl) {
+    imgEl.classList.add('hidden');
+    if (placeholder) placeholder.classList.remove('hidden');
+  }
+
+  // Toggle text input row if text captcha
+  const textRow = document.getElementById('captchaTextInputRow');
+  if (textRow) {
+    if (data.isTextCaptcha || (data.type && data.type.toLowerCase().includes('text'))) {
+      textRow.classList.remove('hidden');
+      const textInput = document.getElementById('inputCaptchaText');
+      if (textInput) {
+        textInput.value = '';
+        setTimeout(() => textInput.focus(), 300);
+      }
+    } else {
+      textRow.classList.add('hidden');
+    }
+  }
+
   let remaining = data.maxWaitSeconds || 120;
   const timerEl = document.getElementById('captchaTimerText');
   timerEl.textContent = `Waiting for verification (${remaining}s remaining)...`;
@@ -443,6 +495,19 @@ function showCaptchaModal(data) {
 
   modal.classList.remove('hidden');
   modal.classList.add('flex');
+}
+
+function updateCaptchaLivePreview(data) {
+  if (!data || !data.screenshotUrl) return;
+  const imgEl = document.getElementById('captchaImagePreview');
+  const placeholder = document.getElementById('captchaImagePlaceholder');
+  if (imgEl) {
+    imgEl.src = data.screenshotUrl;
+    imgEl.onload = () => {
+      imgEl.classList.remove('hidden');
+      if (placeholder) placeholder.classList.add('hidden');
+    };
+  }
 }
 
 function hideCaptchaModal() {
@@ -1117,16 +1182,58 @@ function bindEvents() {
     }
   });
 
+  // Bring Chrome to Front button
+  const btnBringFront = document.getElementById('btnBringChromeFront');
+  if (btnBringFront) {
+    btnBringFront.addEventListener('click', async () => {
+      try {
+        btnBringFront.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i><span>Focusing...</span>';
+        await fetch('/api/browser/bring-to-front', { method: 'POST' });
+        setTimeout(() => {
+          btnBringFront.innerHTML = '<i class="fa-solid fa-window-restore text-blue-400 text-xs"></i><span>Bring Chrome to Front</span>';
+        }, 1200);
+      } catch (e) {}
+    });
+  }
+
+  // Submit Text CAPTCHA button
+  const btnSubmitText = document.getElementById('btnSubmitCaptchaText');
+  if (btnSubmitText) {
+    btnSubmitText.addEventListener('click', async () => {
+      const textInp = document.getElementById('inputCaptchaText');
+      const val = (textInp ? textInp.value : '').trim();
+      if (!val) return;
+      try {
+        btnSubmitText.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i><span>Typing...</span>';
+        const res = await fetch('/api/browser/solve-text-captcha', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: val })
+        });
+        const d = await res.json();
+        showToast(d.message || 'Answer sent to page');
+        setTimeout(() => {
+          btnSubmitText.innerHTML = '<i class="fa-solid fa-paper-plane text-xs"></i><span>Send to Page</span>';
+        }, 1200);
+      } catch (err) {
+        alert('Error sending text to page: ' + err.message);
+      }
+    });
+  }
+
   // CAPTCHA completed button
   const btnCaptcha = document.getElementById('btnCaptchaSolved');
   if (btnCaptcha) {
-    btnCaptcha.addEventListener('click', () => {
-      btnCaptcha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Checking Verification...</span>';
+    btnCaptcha.addEventListener('click', async () => {
+      btnCaptcha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Notifying Agent...</span>';
+      try {
+        await fetch('/api/agent/captcha-resolved', { method: 'POST' });
+        showToast('Verification confirmed! Resuming application...');
+      } catch (e) {}
       setTimeout(() => {
         btnCaptcha.innerHTML = '<i class="fa-solid fa-check-double"></i><span>I\'ve Completed Verification</span>';
         hideCaptchaModal();
-        showToast('Checking verification status in Chrome...');
-      }, 1000);
+      }, 800);
     });
   }
 

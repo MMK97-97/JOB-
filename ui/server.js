@@ -43,6 +43,7 @@ export function createServer(port = 3000) {
   agent.on('question-prompt', evt => broadcast('question-prompt', evt));
   agent.on('question-resolved', evt => broadcast('question-resolved', evt));
   agent.on('captcha-challenge', evt => broadcast('captcha-challenge', evt));
+  agent.on('captcha-update', evt => broadcast('captcha-update', evt));
   agent.on('captcha-resolved', evt => broadcast('captcha-resolved', evt));
 
   // REST API Routes
@@ -163,6 +164,54 @@ export function createServer(port = 3000) {
   app.post('/api/agent/resume', (req, res) => {
     agent.resume();
     res.json({ success: true, message: 'Agent resumed' });
+  });
+
+  app.post('/api/agent/captcha-resolved', (req, res) => {
+    agent.confirmCaptchaResolved();
+    res.json({ success: true, message: 'Resolution signaled to agent' });
+  });
+
+  app.post('/api/browser/bring-to-front', async (req, res) => {
+    try {
+      const page = await agent.browserManager.getPage();
+      if (page && !page.isClosed()) {
+        await page.bringToFront().catch(() => {});
+        await page.evaluate(() => window.focus()).catch(() => {});
+      }
+      res.json({ success: true, message: 'Chrome brought to front' });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/browser/solve-text-captcha', async (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text) return res.status(400).json({ error: 'Text answer is required' });
+      const page = await agent.browserManager.getPage();
+      if (!page || page.isClosed()) return res.status(400).json({ error: 'No active browser page' });
+
+      const inputFound = await page.evaluate((val) => {
+        const inp = document.querySelector(
+          'input[name*="captcha" i], input[id*="captcha" i], input[placeholder*="captcha" i], input[name*="security_code" i], input[name*="verification" i]'
+        );
+        if (inp) {
+          inp.focus();
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (setter) setter.call(inp, val);
+          else inp.value = val;
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          inp.dispatchEvent(new Event('blur', { bubbles: true }));
+          return true;
+        }
+        return false;
+      }, text);
+
+      res.json({ success: inputFound, message: inputFound ? 'Answer typed into CAPTCHA field' : 'No CAPTCHA input field found on page' });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post('/api/browser/open-login', async (req, res) => {

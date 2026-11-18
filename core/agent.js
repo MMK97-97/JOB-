@@ -30,12 +30,22 @@ export class JobAgent extends EventEmitter {
       p.on('status', evt => this.emit('job-status', evt));
       p.on('step', evt => this.emit('job-step', evt));
       p.on('captcha-challenge', evt => this.emit('captcha-challenge', evt));
+      p.on('captcha-update', evt => this.emit('captcha-update', evt));
       p.on('captcha-resolved', evt => this.emit('captcha-resolved', evt));
     });
 
     this.pendingQuestions = new Map();
     this.isRunning = false;
     this.isPaused = false;
+  }
+
+  confirmCaptchaResolved() {
+    this.log('Candidate marked CAPTCHA verified on dashboard. Notifying provider to resume...', 'info');
+    Object.values(this.providers).forEach(p => {
+      if (typeof p.confirmCaptchaResolved === 'function') {
+        p.confirmCaptchaResolved();
+      }
+    });
   }
 
   askUserQuestion({ questionId, prompt, type = 'text', options = [], defaultAnswer = 'Yes', job = {} }) {

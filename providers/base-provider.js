@@ -1,4 +1,6 @@
 import EventEmitter from 'events';
+import path from 'path';
+import fs from 'fs';
 
 export class BaseJobProvider extends EventEmitter {
   constructor(name, browserManager, profileManager, tracker, agent = null) {
@@ -8,6 +10,11 @@ export class BaseJobProvider extends EventEmitter {
     this.profileManager = profileManager;
     this.tracker = tracker;
     this.agent = agent;
+    this.userConfirmedCaptcha = false;
+  }
+
+  confirmCaptchaResolved() {
+    this.userConfirmedCaptcha = true;
   }
 
   log(msg, type = 'info') {
@@ -17,7 +24,7 @@ export class BaseJobProvider extends EventEmitter {
   }
 
   /**
-   * Universal CAPTCHA detector and auto-click handler for Google reCAPTCHA, Cloudflare Turnstile, and hCaptcha
+   * Universal CAPTCHA detector and auto-click handler for Google reCAPTCHA, Cloudflare Turnstile, hCaptcha, and Picture Challenges
    */
   async handleCaptcha(page, ctx = null, job = {}) {
     const targetCtx = ctx || page;
@@ -25,20 +32,41 @@ export class BaseJobProvider extends EventEmitter {
       const allFrames = page && typeof page.frames === 'function' ? page.frames() : [];
       let detectedType = null;
       let checkboxClicked = false;
+      let instructions = null;
+      let isPictureChallenge = false;
+      let isTextCaptcha = false;
 
-      // 1. Google reCAPTCHA v2 / Enterprise
+      // 1. Google reCAPTCHA v2 / Enterprise (Anchor Checkbox & Image Picture Grid)
       for (const f of allFrames) {
         const u = f.url().toLowerCase();
-        if (u.includes('recaptcha') && (u.includes('anchor') || u.includes('api2') || u.includes('enterprise'))) {
-          detectedType = 'Google reCAPTCHA';
-          const anchor = await f.$('#recaptcha-anchor, .recaptcha-checkbox-border, [role="checkbox"]').catch(() => null);
-          if (anchor) {
-            const isChecked = await f.evaluate(el => el.getAttribute('aria-checked') === 'true').catch(() => false);
-            if (!isChecked) {
-              this.log('🛡️ Auto-verifying reCAPTCHA "I\'m not a robot" with natural human cursor...');
-              await this.browserManager.humanClick(anchor, f);
-              checkboxClicked = true;
-              await this.browserManager.delay(2000);
+        if (u.includes('recaptcha')) {
+          // Check for picture challenge grid (bframe)
+          if (u.includes('bframe') || u.includes('image')) {
+            const hasPictureGrid = await f.evaluate(() => {
+              const imgSelect = document.querySelector('#rc-imageselect, .rc-imageselect-desc, .rc-imageselect-instructions');
+              const text = document.querySelector('.rc-imageselect-desc-wrapper, .rc-imageselect-desc, .rc-imageselect-instructions')?.innerText?.trim() || null;
+              return { hasGrid: !!imgSelect, text };
+            }).catch(() => null);
+
+            if (hasPictureGrid && hasPictureGrid.hasGrid) {
+              detectedType = 'Google reCAPTCHA Picture Puzzle';
+              isPictureChallenge = true;
+              instructions = hasPictureGrid.text || 'Select all matching images to verify';
+            }
+          }
+
+          // Check for initial checkbox anchor
+          if (u.includes('anchor') || u.includes('api2') || u.includes('enterprise')) {
+            if (!detectedType) detectedType = 'Google reCAPTCHA';
+            const anchor = await f.$('#recaptcha-anchor, .recaptcha-checkbox-border, [role="checkbox"]').catch(() => null);
+            if (anchor) {
+              const isChecked = await f.evaluate(el => el.getAttribute('aria-checked') === 'true').catch(() => false);
+              if (!isChecked) {
+                this.log('🛡️ Auto-verifying reCAPTCHA "I\'m not a robot" with natural human cursor...');
+                await this.browserManager.humanClick(anchor, f);
+                checkboxClicked = true;
+                await this.browserManager.delay(2000);
+              }
             }
           }
         }
@@ -51,8 +79,6 @@ export class BaseJobProvider extends EventEmitter {
         await cfIframe.scrollIntoViewIfNeeded().catch(() => {});
         const box = await cfIframe.boundingBox().catch(() => null);
         if (box) {
-          // Precise coordinate of the "Verify you are human" checkbox inside the Cloudflare widget:
-          // Checkbox is centered vertically (~32px from top) and ~28px from left edge
           const clickX = box.x + 28 + (Math.random() * 4);
           const clickY = box.y + (box.height / 2) + ((Math.random() - 0.5) * 4);
           this.log('🛡️ Cloudflare Turnstile widget located. Clicking checkbox with trusted CDP pointer event...');
@@ -64,7 +90,7 @@ export class BaseJobProvider extends EventEmitter {
         }
       }
 
-      // Also check across frames
+      // Also check across frames for Turnstile
       for (const f of allFrames) {
         const u = f.url().toLowerCase();
         if (u.includes('challenges.cloudflare.com') || u.includes('turnstile')) {
@@ -81,11 +107,25 @@ export class BaseJobProvider extends EventEmitter {
         }
       }
 
-      // 3. hCaptcha
+      // 3. hCaptcha Checkbox & Picture Puzzle Frame
       for (const f of allFrames) {
         const u = f.url().toLowerCase();
         if (u.includes('hcaptcha.com')) {
-          detectedType = 'hCaptcha';
+          if (u.includes('challenge') || u.includes('frame=challenge')) {
+            const hChallenge = await f.evaluate(() => {
+              const hasChallenge = !!document.querySelector('.challenge-container, .task-image, .prompt-text');
+              const text = document.querySelector('.prompt-text, .challenge-header')?.innerText?.trim() || null;
+              return { hasChallenge, text };
+            }).catch(() => null);
+
+            if (hChallenge && hChallenge.hasChallenge) {
+              detectedType = 'hCaptcha Picture Puzzle';
+              isPictureChallenge = true;
+              instructions = hChallenge.text || 'Select all matching images to verify';
+            }
+          }
+
+          if (!detectedType) detectedType = 'hCaptcha';
           const hCheckbox = await f.$('#checkbox, [role="checkbox"], .check').catch(() => null);
           if (hCheckbox) {
             const isChecked = await f.evaluate(el => el.getAttribute('aria-checked') === 'true').catch(() => false);
@@ -99,7 +139,58 @@ export class BaseJobProvider extends EventEmitter {
         }
       }
 
-      // 4. Main Page / Context Inspection
+      // 4. Arkose Labs / FunCaptcha Puzzle
+      for (const f of allFrames) {
+        const u = f.url().toLowerCase();
+        if (u.includes('arkoselabs') || u.includes('funcaptcha')) {
+          detectedType = 'Arkose Labs Picture Challenge';
+          isPictureChallenge = true;
+          instructions = 'Solve the image alignment / picture puzzle';
+        }
+      }
+
+      // 5. Traditional Image/Distorted Text Picture CAPTCHAs in Form
+      if (!detectedType) {
+        const imgCaptchaInfo = await targetCtx.evaluate(() => {
+          const imgs = Array.from(document.querySelectorAll('img'));
+          const captchaImg = imgs.find(img => {
+            const src = (img.src || '').toLowerCase();
+            const alt = (img.alt || '').toLowerCase();
+            const id = (img.id || '').toLowerCase();
+            const cls = (img.className || '').toLowerCase();
+            return (
+              src.includes('captcha') ||
+              alt.includes('captcha') ||
+              id.includes('captcha') ||
+              cls.includes('captcha') ||
+              src.includes('securimage') ||
+              src.includes('verification_code')
+            );
+          });
+
+          const captchaInput = document.querySelector(
+            'input[name*="captcha" i], input[id*="captcha" i], input[placeholder*="captcha" i], input[name*="security_code" i], input[name*="verification" i]'
+          );
+
+          if (captchaImg || captchaInput) {
+            return {
+              hasImg: !!captchaImg,
+              imgSrc: captchaImg ? captchaImg.src : null,
+              hasInput: !!captchaInput
+            };
+          }
+          return null;
+        }).catch(() => null);
+
+        if (imgCaptchaInfo) {
+          detectedType = 'Distorted Text CAPTCHA Picture';
+          isPictureChallenge = true;
+          isTextCaptcha = true;
+          instructions = 'Type the characters shown in the CAPTCHA picture';
+        }
+      }
+
+      // 6. Main Page / Security Wall Inspection
       if (!detectedType) {
         const mainCheck = await targetCtx.evaluate(() => {
           const body = (document.body ? document.body.innerText : '').toLowerCase();
@@ -124,14 +215,21 @@ export class BaseJobProvider extends EventEmitter {
         if (mainCheck) detectedType = mainCheck;
       }
 
-      return { detected: !!detectedType, type: detectedType, clicked: checkboxClicked };
+      return {
+        detected: !!detectedType,
+        type: detectedType,
+        clicked: checkboxClicked,
+        instructions,
+        isPictureChallenge,
+        isTextCaptcha
+      };
     } catch (e) {
-      return { detected: false, type: null, clicked: false };
+      return { detected: false, type: null, clicked: false, instructions: null, isPictureChallenge: false, isTextCaptcha: false };
     }
   }
 
   /**
-   * Actively waits for human-in-the-loop CAPTCHA puzzle resolution, alerting the user via dashboard
+   * Actively waits for human-in-the-loop CAPTCHA puzzle resolution, alerting the user via dashboard with live picture mirroring
    */
   async waitForCaptchaResolution(page, ctx = null, job = {}, maxWaitSeconds = 120, options = {}) {
     const targetCtx = ctx || page;
@@ -140,13 +238,25 @@ export class BaseJobProvider extends EventEmitter {
     const captchaInfo = await this.handleCaptcha(page, targetCtx, job);
     const captchaType = captchaInfo.type || 'Human Verification Challenge';
 
-    this.log(`🛡️ CAPTCHA challenge detected: "${captchaType}". Alerting candidate on dashboard and waiting for completion...`, 'warning');
+    this.log(`🛡️ CAPTCHA challenge detected: "${captchaType}". Alerting candidate on dashboard and capturing live snapshot...`, 'warning');
 
-    // Notify UI dashboard with job details
+    // Take high-resolution screenshot of the challenge
+    let screenshotUrl = null;
+    const screenshotPath = await this.browserManager.takeScreenshot('captcha-challenge', page);
+    if (screenshotPath) {
+      const filename = path.basename(screenshotPath);
+      screenshotUrl = `/screenshots/${filename}`;
+    }
+
+    // Notify UI dashboard with job details, screenshot URL, and instructions
     this.emit('captcha-challenge', {
       type: captchaType,
       job: { title: job?.title || 'Active Target', company: job?.company || '' },
-      maxWaitSeconds
+      maxWaitSeconds,
+      screenshotUrl,
+      instructions: captchaInfo.instructions,
+      isPictureChallenge: captchaInfo.isPictureChallenge,
+      isTextCaptcha: captchaInfo.isTextCaptcha
     });
 
     // Bring browser page into focus so candidate sees the challenge immediately
@@ -233,13 +343,27 @@ export class BaseJobProvider extends EventEmitter {
         await this.browserManager.delay(500);
       }
 
+      if (this.userConfirmedCaptcha) {
+        this.userConfirmedCaptcha = false;
+        resolved = true;
+        this.log('Candidate confirmed CAPTCHA resolution on dashboard. Resuming immediately...');
+        break;
+      }
+
       resolved = await checkStatus();
       if (resolved) {
         break;
       }
 
-      // Re-attempt auto-click on checkbox every 6 seconds if not solved yet
-      if (Math.round(elapsed) % 6 === 0) {
+      // Every 4 seconds, refresh snapshot of the CAPTCHA picture and re-attempt auto-click
+      if (Math.round(elapsed) > 0 && Math.round(elapsed) % 4 === 0) {
+        const updatePath = await this.browserManager.takeScreenshot('captcha-challenge', page);
+        if (updatePath) {
+          const fn = path.basename(updatePath);
+          this.emit('captcha-update', {
+            screenshotUrl: `/screenshots/${fn}?t=${Date.now()}`
+          });
+        }
         await this.handleCaptcha(page, targetCtx, job);
       }
 

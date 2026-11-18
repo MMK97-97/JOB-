@@ -801,29 +801,71 @@
   </div>
 
   <!-- Interactive Human-in-the-Loop CAPTCHA Modal -->
-  <div id="modalCaptchaPrompt" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden items-center justify-center p-4">
-    <div class="bg-slate-900 border border-amber-500/50 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 relative animate-fade-in">
-      <div class="flex items-start space-x-3 text-amber-400">
-        <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-lg shrink-0">
-          <i class="fa-solid fa-shield-halved text-amber-400"></i>
+  <div id="modalCaptchaPrompt" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-amber-500/50 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 relative animate-fade-in my-8">
+      <div class="flex items-start justify-between text-amber-400">
+        <div class="flex items-start space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-lg shrink-0">
+            <i class="fa-solid fa-shield-halved text-amber-400"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+              <span>Human Verification Required</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">Action Required</span>
+            </h3>
+            <p id="captchaJobSubtitle" class="text-xs text-slate-400 mt-0.5">Verification challenge on active job application</p>
+          </div>
         </div>
-        <div class="flex-1">
-          <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-            <span>Human Verification Required</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">Action Required</span>
-          </h3>
-          <p id="captchaJobSubtitle" class="text-xs text-slate-400 mt-0.5">Verification challenge on active job application</p>
-        </div>
+        <button id="btnBringChromeFront" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition active:scale-95" title="Focus Chrome Window">
+          <i class="fa-solid fa-window-restore text-blue-400 text-xs"></i>
+          <span>Bring Chrome to Front</span>
+        </button>
       </div>
 
       <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-        <div class="flex items-center space-x-2 text-amber-300 text-xs font-semibold">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span id="captchaTypeName">Google reCAPTCHA / Verification</span>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2 text-amber-300 text-xs font-semibold">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span id="captchaTypeName">Google reCAPTCHA / Verification</span>
+          </div>
+          <span id="captchaChallengeBadge" class="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 hidden">Picture Challenge</span>
         </div>
-        <p class="text-xs text-slate-300 leading-relaxed">
-          The job portal presented a human verification challenge. The agent attempted initial auto-verification and has brought Chrome to the front. Please complete the verification puzzle in Chrome.
+        <p id="captchaInstructionText" class="text-xs text-slate-300 leading-relaxed">
+          The job portal presented a verification challenge. Please complete the verification puzzle in Chrome or review the live picture below.
         </p>
+      </div>
+
+      <!-- Live CAPTCHA Picture Preview Container -->
+      <div id="captchaImageContainer" class="rounded-xl overflow-hidden border border-slate-800 bg-slate-950/80 p-3 flex flex-col items-center justify-center relative">
+        <div class="w-full flex items-center justify-between text-[11px] text-slate-400 mb-2 px-1">
+          <span class="flex items-center space-x-1.5">
+            <i class="fa-solid fa-camera text-blue-400"></i>
+            <span class="font-medium text-slate-300">Live Snapshot from Browser</span>
+          </span>
+          <span id="captchaLiveStatus" class="flex items-center space-x-1.5 text-emerald-400 text-[10px]">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>Live Monitoring</span>
+          </span>
+        </div>
+        <div class="w-full flex justify-center bg-black/50 rounded-lg p-2 border border-slate-800/80 min-h-[140px] items-center">
+          <img id="captchaImagePreview" src="" alt="CAPTCHA Challenge Screenshot" class="max-h-72 w-auto object-contain rounded border border-slate-700/60 shadow-lg hidden" />
+          <div id="captchaImagePlaceholder" class="text-xs text-slate-500 italic py-6 flex flex-col items-center space-y-2">
+            <i class="fa-solid fa-spinner fa-spin text-slate-600 text-base"></i>
+            <span>Capturing live challenge snapshot...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Optional Text CAPTCHA Input (if image displays distorted text) -->
+      <div id="captchaTextInputRow" class="hidden p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+        <label class="block text-xs font-medium text-slate-300">Text CAPTCHA Answer (if letters/numbers are shown in picture):</label>
+        <div class="flex space-x-2">
+          <input type="text" id="inputCaptchaText" placeholder="Type characters here..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 uppercase tracking-widest font-mono text-center font-bold" />
+          <button id="btnSubmitCaptchaText" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white transition active:scale-95 flex items-center space-x-1.5">
+            <i class="fa-solid fa-paper-plane text-xs"></i>
+            <span>Send to Page</span>
+          </button>
+        </div>
       </div>
 
       <div class="p-3 rounded-lg bg-blue-950/40 border border-blue-500/30 flex items-center space-x-3">
@@ -831,7 +873,7 @@
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
           <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
         </span>
-        <span class="text-xs text-blue-200">The agent is actively monitoring Chrome and will automatically resume the moment you finish!</span>
+        <span class="text-xs text-blue-200">The agent is actively monitoring Chrome and will automatically resume the moment the challenge is cleared!</span>
       </div>
 
       <div class="flex items-center justify-between pt-3 border-t border-slate-800">
