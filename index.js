@@ -3,7 +3,27 @@
 import { createServer } from './ui/server.js';
 import { JobAgent } from './core/agent.js';
 import chalk from 'chalk';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
+
+function freePort(targetPort) {
+  try {
+    if (process.platform === 'win32') {
+      const output = execSync(`netstat -ano | findstr :${targetPort}`, { encoding: 'utf8' }).trim();
+      if (output) {
+        const lines = output.split('\n');
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && parseInt(pid) > 0 && parseInt(pid) !== process.pid) {
+            execSync(`taskkill /F /PID ${pid} 2>nul`);
+          }
+        }
+      }
+    } else {
+      execSync(`lsof -t -i:${targetPort} | xargs kill -9 2>/dev/null || true`);
+    }
+  } catch (e) {}
+}
 
 const args = process.argv.slice(2);
 
@@ -72,36 +92,49 @@ async function main() {
     return;
   }
 
-  // Default: Start Web Dashboard
-  const port = process.env.PORT || 3000;
-  const { server } = createServer(port);
+  // Default: Start Web Dashboard with resilient port conflict resolution
+  const initialPort = parseInt(process.env.PORT) || 3000;
 
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log(chalk.yellow(`\n Port ${port} is already in use by another instance.`));
-      console.log(chalk.bold(` You can access the already running dashboard at: `) + chalk.cyan.underline(`http://localhost:${port}\n`));
-      const openCmd = process.platform === 'win32' ? `start http://localhost:${port}` :
-                      process.platform === 'darwin' ? `open http://localhost:${port}` :
-                      `xdg-open http://localhost:${port}`;
-      exec(openCmd);
-    } else {
-      console.error(chalk.red('Server error:'), err);
+  const startServer = (targetPort, retryCount = 0) => {
+    const { server, wss } = createServer(targetPort);
+
+    if (wss) {
+      wss.on('error', () => {});
     }
-  });
 
-  server.listen(port, () => {
-    console.log(chalk.bold.green(`\n Web Dashboard is active and running!`));
-    console.log(chalk.bold(` Access URL: `) + chalk.cyan.underline(`http://localhost:${port}`));
-    console.log(chalk.yellow(` Opening dashboard in your browser...`));
-    console.log(chalk.gray(`\n [NOTE] Keep this terminal window open while using the dashboard.`));
-    console.log(chalk.gray(` Only press Ctrl+C when you want to stop the server.\n`));
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        if (retryCount === 0) {
+          console.log(chalk.yellow(`\n[PORT CONFLICT] Port ${targetPort} is occupied by another process. Freeing port...`));
+          freePort(targetPort);
+          setTimeout(() => {
+            startServer(targetPort, 1);
+          }, 800);
+        } else {
+          const nextPort = targetPort + 1;
+          console.log(chalk.yellow(`[AUTO-FAILOVER] Port ${targetPort} still busy. Automatically switching to http://localhost:${nextPort}...`));
+          startServer(nextPort, 0);
+        }
+      } else {
+        console.error(chalk.red('Server error:'), err);
+      }
+    });
 
-    // Automatically open the user's browser
-    const openCmd = process.platform === 'win32' ? `start http://localhost:${port}` :
-                    process.platform === 'darwin' ? `open http://localhost:${port}` :
-                    `xdg-open http://localhost:${port}`;
-    exec(openCmd);
-  });
+    server.listen(targetPort, () => {
+      console.log(chalk.bold.green(`\n Web Dashboard is active and running!`));
+      console.log(chalk.bold(` Access URL: `) + chalk.cyan.underline(`http://localhost:${targetPort}`));
+      console.log(chalk.yellow(` Opening dashboard in your browser...`));
+      console.log(chalk.gray(`\n [NOTE] Keep this terminal window open while using the dashboard.`));
+      console.log(chalk.gray(` Only press Ctrl+C when you want to stop the server.\n`));
+
+      const openCmd = process.platform === 'win32' ? `start http://localhost:${targetPort}` :
+                      process.platform === 'darwin' ? `open http://localhost:${targetPort}` :
+                      `xdg-open http://localhost:${targetPort}`;
+      exec(openCmd);
+    });
+  };
+
+  startServer(initialPort);
 }
 
 main().catch(err => {

@@ -14,6 +14,9 @@ export function createServer(port = 3000) {
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
 
+  // Suppress unhandled WebSocketServer error on port collision
+  wss.on('error', () => {});
+
   app.use(express.json());
   app.use(express.static(path.join(__dirname, 'public')));
   app.use('/screenshots', express.static(path.resolve(__dirname, '../data/screenshots')));
@@ -172,5 +175,5 @@ export function createServer(port = 3000) {
     }));
   });
 
-  return { app, server, agent };
+  return { app, server, agent, wss };
 }
