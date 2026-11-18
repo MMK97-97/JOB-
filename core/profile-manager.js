@@ -98,15 +98,40 @@ export class ProfileManager {
     }
 
     if (q.includes('relocate') || q.includes('willing to relocate')) {
-      return this.profile.workAuthorization.willingToRelocate ? 'Yes' : 'No';
+      const relocateAns = this.profile.screeningAnswers?.relocate || (this.profile.workAuthorization.willingToRelocate ? 'Yes' : 'No');
+      if (options.length > 0) {
+        const match = options.find(o => o.toLowerCase().includes(relocateAns.toLowerCase()));
+        if (match) return match;
+      }
+      return relocateAns;
     }
 
     if (q.includes('commute') || q.includes('travel to') || q.includes('on-site') || q.includes('hybrid') || q.includes('remote')) {
-      return 'Yes';
+      const commuteAns = this.profile.screeningAnswers?.commute_ok || 'Yes';
+      if (options.length > 0) {
+        const match = options.find(o => o.toLowerCase().includes(commuteAns.toLowerCase()));
+        if (match) return match;
+      }
+      return commuteAns;
     }
 
-    if (q.includes('overtime') || q.includes('weekends') || q.includes('shift') || q.includes('full-time') || q.includes('schedule')) {
-      return 'Yes';
+    // Role specific custom screening questions
+    if (q.includes('automotive') || q.includes('auto part') || q.includes('diesel')) {
+      const autoAns = this.profile.screeningAnswers?.automotive_parts || 'Yes';
+      if (options.length > 0) {
+        const match = options.find(o => o.toLowerCase().includes(autoAns.toLowerCase()) || (autoAns === 'Yes' && o.toLowerCase().includes('direct experience')));
+        if (match) return match;
+      }
+      return autoAns;
+    }
+
+    if (q.includes('overtime') || q.includes('show up daily') || q.includes('attendance') || q.includes('essential to the success') || q.includes('weekends') || q.includes('shift') || q.includes('full-time') || q.includes('schedule')) {
+      const otAns = this.profile.screeningAnswers?.overtime_daily || 'Yes';
+      if (options.length > 0) {
+        const match = options.find(o => o.toLowerCase().includes(otAns.toLowerCase()) || (otAns === 'Yes' && o.toLowerCase().includes('committed')));
+        if (match) return match;
+      }
+      return otAns;
     }
 
     // 2. Certifications & Qualifications
@@ -166,78 +191,91 @@ export class ProfileManager {
 
     // 6. Education
     if (q.includes('highest level of education') || q.includes('education level') || q.includes('degree completed')) {
+      const targetEdu = this.profile.screeningAnswers?.highest_education || this.profile.education?.highestLevel || "Master's Degree";
       if (options.length > 0) {
-        const masterOpt = options.find(o => o.toLowerCase().includes('master'));
-        if (masterOpt) return masterOpt;
+        const exact = options.find(o => o.toLowerCase().includes(targetEdu.toLowerCase()));
+        if (exact) return exact;
+        if (targetEdu.toLowerCase().includes('master')) {
+          const masterOpt = options.find(o => o.toLowerCase().includes('master'));
+          if (masterOpt) return masterOpt;
+        }
         const bachelorsOpt = options.find(o => o.toLowerCase().includes('bachelor'));
         if (bachelorsOpt) return bachelorsOpt;
       }
-      return this.profile.education.highestLevel;
+      return targetEdu;
     }
 
     // 7. Notice Period / Start Date
     if (q.includes('notice') || q.includes('start date') || q.includes('how soon') || q.includes('availability')) {
       if (inputType === 'number') return '14';
-      return '2 weeks';
+      return this.profile.screeningAnswers?.notice_period || this.profile.compensation?.noticePeriod || '2 weeks';
     }
 
-    // 6. EEO & Demographic questions
+    // 8. EEO & Demographic questions
     if (q.includes('hispanic') || q.includes('latino')) {
+      const hisp = this.profile.eeo?.hispanicLatino || 'No';
       if (options.length > 0) {
-        const noOpt = options.find(o => o.toLowerCase().startsWith('no') || o.toLowerCase().includes('not hispanic'));
-        if (noOpt) return noOpt;
+        const match = options.find(o => o.toLowerCase().includes(hisp.toLowerCase()) || (hisp === 'No' && o.toLowerCase().includes('not hispanic')));
+        if (match) return match;
       }
-      return 'No';
+      return hisp;
     }
 
     if (q.includes('gender') || q.includes('sex')) {
+      const gender = this.profile.eeo?.gender || 'Male';
       if (options.length > 0) {
-        const maleOpt = options.find(o => o.toLowerCase() === 'male' || o.toLowerCase().includes('man'));
-        if (maleOpt) return maleOpt;
+        const match = options.find(o => o.toLowerCase() === gender.toLowerCase() || (gender === 'Male' && o.toLowerCase().includes('man')));
+        if (match) return match;
       }
-      return this.profile.eeo.gender;
+      return gender;
     }
 
     if (q.includes('pronoun')) {
+      const pronouns = this.profile.eeo?.pronouns || 'He/Him';
       if (options.length > 0) {
-        const heOpt = options.find(o => o.toLowerCase().includes('he/him') || o.toLowerCase().includes('he / him'));
-        if (heOpt) return heOpt;
+        const match = options.find(o => o.toLowerCase().includes(pronouns.toLowerCase()) || o.toLowerCase().replace(/\s+/g, '') === pronouns.toLowerCase().replace(/\s+/g, ''));
+        if (match) return match;
       }
-      return this.profile.eeo.pronouns || 'He/Him';
+      return pronouns;
     }
 
     if (q.includes('race') || q.includes('ethnicity')) {
+      const race = this.profile.eeo?.raceEthnicity || 'Asian';
       if (options.length > 0) {
-        const asianOpt = options.find(o => o.toLowerCase().includes('asian'));
-        if (asianOpt) return asianOpt;
+        const match = options.find(o => o.toLowerCase().includes(race.toLowerCase()));
+        if (match) return match;
       }
-      return this.profile.eeo.raceEthnicity;
+      return race;
     }
 
     if (q.includes('veteran')) {
+      const vet = this.profile.eeo?.veteranStatus || 'I am not a protected veteran';
       if (options.length > 0) {
-        const notVet = options.find(o =>
+        const match = options.find(o =>
+          o.toLowerCase().includes(vet.toLowerCase()) ||
           o.toLowerCase().includes('not a protected veteran') ||
           o.toLowerCase().includes('not a veteran') ||
           o.toLowerCase().includes('i am not') ||
-          o.toLowerCase() === 'no'
+          (vet === 'No' && o.toLowerCase() === 'no')
         );
-        if (notVet) return notVet;
+        if (match) return match;
       }
-      return this.profile.eeo.veteranStatus;
+      return vet;
     }
 
     if (q.includes('disability')) {
+      const dis = this.profile.eeo?.disabilityStatus || 'No, I do not have a disability';
       if (options.length > 0) {
-        const noDis = options.find(o =>
+        const match = options.find(o =>
+          o.toLowerCase().includes(dis.toLowerCase()) ||
           o.toLowerCase().includes('no, i do not') ||
           o.toLowerCase().includes('no disability') ||
           o.toLowerCase().includes('not have a disability') ||
-          o.toLowerCase() === 'no'
+          (dis === 'No' && o.toLowerCase() === 'no')
         );
-        if (noDis) return noDis;
+        if (match) return match;
       }
-      return this.profile.eeo.disabilityStatus;
+      return dis;
     }
 
     if (q.includes('lgbt') || q.includes('sexual orientation')) {
@@ -284,6 +322,10 @@ export class ProfileManager {
       q.includes('vehicle') ||
       q.includes('diesel')
     ) {
+      const autoSaved = this.profile.screeningAnswers?.automotive_parts || 'Yes';
+      if (autoSaved.toLowerCase().startsWith('no')) {
+        return 'While my core focus has been overall mechanical equipment and technical inventory planning, I bring deep experience managing 900+ technical SKUs and BOMs with strong mechanical engineering foundations.';
+      }
       return 'Yes, I have direct experience working with automotive and mechanical parts, backed by my B.Tech in Mechanical Engineering. In my supply chain and procurement roles, I have managed cataloging, inventory forecasting, and vendor sourcing for 900+ technical SKUs, maintaining bills of materials (BOMs) and tracking inventory replenishment.';
     }
 
@@ -299,6 +341,10 @@ export class ProfileManager {
       q.includes('weekends') ||
       q.includes('schedule')
     ) {
+      const otSaved = this.profile.screeningAnswers?.overtime_daily || 'Yes';
+      if (otSaved.toLowerCase().startsWith('no')) {
+        return 'I am available for all regular scheduled working shifts.';
+      }
       return 'Yes, I am fully committed to showing up daily on time, maintaining 100% reliable attendance, and working overtime, weekend, or flexible shifts as needed to ensure operational success and customer fulfillment.';
     }
 

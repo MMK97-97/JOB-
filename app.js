@@ -260,20 +260,46 @@ async function loadData() {
 
 function populateProfile(profile) {
   if (!profile) return;
-  document.getElementById('headerCandidateName').textContent = profile.personal.fullName;
-  document.getElementById('profFullName').value = profile.personal.fullName || '';
-  document.getElementById('profEmail').value = profile.personal.email || '';
-  document.getElementById('profPhone').value = profile.personal.phone || '';
-  document.getElementById('profCity').value = profile.personal.location.city || '';
-  document.getElementById('profState').value = profile.personal.location.state || '';
-  document.getElementById('profSalary').value = profile.compensation.expectedSalaryAnnual || 95000;
+  const p = profile.personal || {};
+  const w = profile.workAuthorization || {};
+  const c = profile.compensation || {};
+  const e = profile.eeo || {};
+  const s = profile.screeningAnswers || {};
+
+  document.getElementById('headerCandidateName').textContent = p.fullName || 'Manoj Kumar Manne';
+  document.getElementById('profFullName').value = p.fullName || '';
+  document.getElementById('profEmail').value = p.email || '';
+  document.getElementById('profPhone').value = p.phone || '';
+  document.getElementById('profCity').value = p.location?.city || '';
+  document.getElementById('profState').value = p.location?.state || '';
+  document.getElementById('profSalary').value = c.expectedSalaryAnnual || 95000;
+  if (document.getElementById('profNoticePeriod')) {
+    document.getElementById('profNoticePeriod').value = c.noticePeriod || s.notice_period || '2 weeks';
+  }
   document.getElementById('profCoverLetter').value = profile.coverLetter || '';
 
-  document.getElementById('profAuthUS').value = String(profile.workAuthorization.legallyAuthorizedInUS);
-  document.getElementById('profSponsorship').value = String(profile.workAuthorization.requireSponsorship);
-  document.getElementById('profBackground').value = String(profile.workAuthorization.passBackgroundCheck);
-  document.getElementById('profDrugTest').value = String(profile.workAuthorization.passDrugScreen);
-  document.getElementById('profDriversLic').value = String(profile.workAuthorization.hasDriversLicense);
+  // Legal & Authorization
+  document.getElementById('profAuthUS').value = String(w.legallyAuthorizedInUS ?? true);
+  document.getElementById('profSponsorship').value = String(w.requireSponsorship ?? false);
+  document.getElementById('profBackground').value = String(w.passBackgroundCheck ?? true);
+  document.getElementById('profDrugTest').value = String(w.passDrugScreen ?? true);
+  document.getElementById('profDriversLic').value = String(w.hasDriversLicense ?? true);
+
+  // Recruiter Demographics & Voluntary Self-ID (EEO)
+  if (document.getElementById('profGender')) document.getElementById('profGender').value = e.gender || 'Male';
+  if (document.getElementById('profPronouns')) document.getElementById('profPronouns').value = e.pronouns || 'He/Him';
+  if (document.getElementById('profRace')) document.getElementById('profRace').value = e.raceEthnicity || 'Asian';
+  if (document.getElementById('profHispanic')) document.getElementById('profHispanic').value = e.hispanicLatino || 'No';
+  if (document.getElementById('profVeteran')) document.getElementById('profVeteran').value = e.veteranStatus || 'I am not a protected veteran';
+  if (document.getElementById('profDisability')) document.getElementById('profDisability').value = e.disabilityStatus || 'No, I do not have a disability';
+
+  // Role Experience & Work Habit Answers
+  if (document.getElementById('profAutoParts')) document.getElementById('profAutoParts').value = s.automotive_parts || 'Yes';
+  if (document.getElementById('profOvertime')) document.getElementById('profOvertime').value = s.overtime_daily || 'Yes';
+  if (document.getElementById('profRelocate')) document.getElementById('profRelocate').value = s.relocate || (w.willingToRelocate ? 'Yes' : 'No');
+  if (document.getElementById('profCommute')) document.getElementById('profCommute').value = s.commute_ok || 'Yes';
+  if (document.getElementById('profEducation')) document.getElementById('profEducation').value = s.highest_education || profile.education?.highestLevel || "Master's Degree";
+  if (document.getElementById('profExpYears')) document.getElementById('profExpYears').value = s.default_experience_years || 5;
 }
 
 function initMultiSelectFilters() {
@@ -659,15 +685,16 @@ function bindEvents() {
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Saving...';
 
     const updated = {
+      ...(currentProfile || {}),
       personal: {
         ...(currentProfile?.personal || {}),
-        fullName: document.getElementById('profFullName').value,
-        email: document.getElementById('profEmail').value,
-        phone: document.getElementById('profPhone').value,
+        fullName: document.getElementById('profFullName').value.trim(),
+        email: document.getElementById('profEmail').value.trim(),
+        phone: document.getElementById('profPhone').value.trim(),
         location: {
           ...(currentProfile?.personal?.location || {}),
-          city: document.getElementById('profCity').value,
-          state: document.getElementById('profState').value
+          city: document.getElementById('profCity').value.trim(),
+          state: document.getElementById('profState').value.trim()
         }
       },
       workAuthorization: {
@@ -676,11 +703,38 @@ function bindEvents() {
         requireSponsorship: document.getElementById('profSponsorship').value === 'true',
         passBackgroundCheck: document.getElementById('profBackground').value === 'true',
         passDrugScreen: document.getElementById('profDrugTest').value === 'true',
-        hasDriversLicense: document.getElementById('profDriversLic').value === 'true'
+        hasDriversLicense: document.getElementById('profDriversLic').value === 'true',
+        willingToRelocate: document.getElementById('profRelocate') ? document.getElementById('profRelocate').value === 'Yes' : true
       },
       compensation: {
         ...(currentProfile?.compensation || {}),
-        expectedSalaryAnnual: parseInt(document.getElementById('profSalary').value, 10) || 95000
+        expectedSalaryAnnual: parseInt(document.getElementById('profSalary').value, 10) || 95000,
+        noticePeriod: document.getElementById('profNoticePeriod') ? document.getElementById('profNoticePeriod').value : '2 weeks'
+      },
+      eeo: {
+        ...(currentProfile?.eeo || {}),
+        gender: document.getElementById('profGender') ? document.getElementById('profGender').value : 'Male',
+        pronouns: document.getElementById('profPronouns') ? document.getElementById('profPronouns').value : 'He/Him',
+        raceEthnicity: document.getElementById('profRace') ? document.getElementById('profRace').value : 'Asian',
+        hispanicLatino: document.getElementById('profHispanic') ? document.getElementById('profHispanic').value : 'No',
+        veteranStatus: document.getElementById('profVeteran') ? document.getElementById('profVeteran').value : 'I am not a protected veteran',
+        disabilityStatus: document.getElementById('profDisability') ? document.getElementById('profDisability').value : 'No, I do not have a disability',
+        lgbtq: currentProfile?.eeo?.lgbtq || 'Decline to specify'
+      },
+      screeningAnswers: {
+        ...(currentProfile?.screeningAnswers || {}),
+        automotive_parts: document.getElementById('profAutoParts') ? document.getElementById('profAutoParts').value : 'Yes',
+        overtime_daily: document.getElementById('profOvertime') ? document.getElementById('profOvertime').value : 'Yes',
+        relocate: document.getElementById('profRelocate') ? document.getElementById('profRelocate').value : 'Yes',
+        commute_ok: document.getElementById('profCommute') ? document.getElementById('profCommute').value : 'Yes',
+        highest_education: document.getElementById('profEducation') ? document.getElementById('profEducation').value : "Master's Degree",
+        default_experience_years: parseInt(document.getElementById('profExpYears')?.value, 10) || 5,
+        notice_period: document.getElementById('profNoticePeriod') ? document.getElementById('profNoticePeriod').value : '2 weeks',
+        sponsorship: document.getElementById('profSponsorship').value === 'true' ? 'Yes' : 'No',
+        authorized: document.getElementById('profAuthUS').value === 'true' ? 'Yes' : 'No',
+        background_check: document.getElementById('profBackground').value === 'true' ? 'Yes' : 'No',
+        drug_test: document.getElementById('profDrugTest').value === 'true' ? 'Yes' : 'No',
+        drivers_license: document.getElementById('profDriversLic').value === 'true' ? 'Yes' : 'No'
       },
       coverLetter: document.getElementById('profCoverLetter').value
     };
@@ -690,11 +744,11 @@ function bindEvents() {
     currentProfile = updated;
 
     if (isCloud) {
-      btn.className = 'px-3 py-1 bg-emerald-600 rounded text-xs text-white font-medium transition';
-      btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Saved!';
-      showToast('Candidate profile saved to browser storage!');
+      btn.className = 'px-5 py-2.5 bg-emerald-600 rounded-lg text-xs font-semibold text-white shadow-lg transition flex items-center space-x-2';
+      btn.innerHTML = '<i class="fa-solid fa-check"></i><span>Saved to Browser!</span>';
+      showToast('Candidate demographics & ATS screening answers saved to browser storage!');
       setTimeout(() => {
-        btn.className = 'px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white font-medium transition';
+        btn.className = 'px-5 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-blue-600/25 transition active:scale-95 flex items-center space-x-2';
         btn.innerHTML = originalText;
       }, 2500);
       return;
@@ -707,9 +761,9 @@ function bindEvents() {
         body: JSON.stringify(updated)
       });
       if (res.ok) {
-        btn.className = 'px-3 py-1 bg-emerald-600 rounded text-xs text-white font-medium transition';
-        btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Saved!';
-        showToast('Profile and ATS answers saved to local config!');
+        btn.className = 'px-5 py-2.5 bg-emerald-600 rounded-lg text-xs font-semibold text-white shadow-lg transition flex items-center space-x-2';
+        btn.innerHTML = '<i class="fa-solid fa-check"></i><span>All Answers Saved!</span>';
+        showToast('Candidate demographics & ATS screening answers saved successfully!');
         loadData();
       } else {
         showToast('Server returned error saving profile', 'error');
@@ -718,7 +772,7 @@ function bindEvents() {
       showToast('Error connecting to local server: ' + e.message, 'error');
     } finally {
       setTimeout(() => {
-        btn.className = 'px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white font-medium transition';
+        btn.className = 'px-5 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-blue-600/25 transition active:scale-95 flex items-center space-x-2';
         btn.innerHTML = originalText;
       }, 2500);
     }

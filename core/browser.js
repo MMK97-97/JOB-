@@ -63,10 +63,40 @@ export class BrowserManager {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
       );
 
-      // Clean webdriver flags
+      // Clean webdriver flags and auto-kill beforeunload popups ("Leave site? Changes you made may not be saved")
       await this.activePage.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         window.navigator.chrome = { runtime: {} };
+        window.onbeforeunload = null;
+        window.addEventListener('beforeunload', (e) => {
+          e.stopImmediatePropagation();
+        }, true);
+      });
+
+      // Auto-accept any browser dialogs so navigations never hang or prompt modal
+      this.activePage.on('dialog', async dialog => {
+        try {
+          console.log(`[BROWSER DIALOG] Auto-handling modal: ${dialog.type()} "${dialog.message()}"`);
+          await dialog.accept();
+        } catch (e) {}
+      });
+
+      // Listen for popup tabs/windows and attach handlers immediately
+      this.browser.on('targetcreated', async target => {
+        try {
+          const p = await target.page();
+          if (p) {
+            p.on('dialog', async dialog => {
+              try { await dialog.accept(); } catch (e) {}
+            });
+            await p.evaluateOnNewDocument(() => {
+              window.onbeforeunload = null;
+              window.addEventListener('beforeunload', (e) => {
+                e.stopImmediatePropagation();
+              }, true);
+            }).catch(() => {});
+          }
+        } catch (e) {}
       });
 
       return this.browser;
@@ -109,6 +139,17 @@ export class BrowserManager {
       return raw.page(); // Frame -> Page
     }
     return raw;
+  }
+
+  async dismissBeforeUnload(pageOrFrame) {
+    try {
+      const page = this._resolvePage(pageOrFrame);
+      if (page && !page.isClosed()) {
+        await page.evaluate(() => {
+          window.onbeforeunload = null;
+        }).catch(() => {});
+      }
+    } catch (e) {}
   }
 
   async getPage() {
