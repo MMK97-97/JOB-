@@ -908,5 +908,4 @@ export class IndeedProvider extends BaseJobProvider {
     // Do NOT prematurely exit on early steps if page is still transitioning
     return { completed: false };
   }
-  }
 }
