@@ -12,11 +12,15 @@ puppeteer.use(StealthPlugin());
 
 export class BrowserManager {
   constructor(options = {}) {
+    const defaultChrome = process.platform === 'linux'
+      ? '/usr/bin/google-chrome'
+      : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
     this.options = {
-      headless: options.headless ?? false,
+      headless: process.env.HEADLESS === 'true' ? true : (options.headless ?? false),
       slowMo: options.slowMo ?? 50,
       userDataDir: options.userDataDir || path.resolve(__dirname, '../data/chrome-profile'),
-      chromePath: options.chromePath || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      chromePath: process.env.CHROME_PATH || options.chromePath || defaultChrome,
       ...options
     };
     this.browser = null;

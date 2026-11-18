@@ -1,0 +1,64 @@
+name: Run Job Applying Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      board:
+        description: 'Target Job Board'
+        required: true
+        default: 'indeed'
+        type: choice
+        options:
+          - indeed
+          - linkedin
+      dry_run:
+        description: 'Dry Run Mode (fills applications without final submission)'
+        required: true
+        default: true
+        type: boolean
+      max_applications:
+        description: 'Maximum applications limit'
+        required: false
+        default: '10'
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Google Chrome (for stealth browser automation)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: Execute Job Applying Agent
+        run: |
+          node index.js --run --board ${{ inputs.board }} ${{ inputs.dry_run == true && '--dry-run' || '' }}
+        env:
+          HEADLESS: "true"
+          CHROME_PATH: "/usr/bin/google-chrome"
+
+      - name: Upload Run Screenshots & Application Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-results
+          path: |
+            data/screenshots/
+            data/applications.json
+          retention-days: 14

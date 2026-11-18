@@ -31,28 +31,39 @@ function initTabs() {
 
 // WebSocket connection for real-time events
 function initWebSocket() {
+  const isCloud = window.location.hostname.includes('github.io');
+  if (isCloud) {
+    appendLog('Running in Cloud Preview mode (GitHub Pages). Local runner API is inactive.', 'info');
+    appendLog('To run live automated applying on Indeed & LinkedIn, launch "start.bat" locally.', 'warning');
+    return;
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}`;
 
-  ws = new WebSocket(wsUrl);
+  try {
+    ws = new WebSocket(wsUrl);
 
-  ws.onopen = () => {
-    appendLog('Connected to agent real-time communication stream.', 'info');
-  };
+    ws.onopen = () => {
+      appendLog('Connected to agent real-time communication stream.', 'info');
+    };
 
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      handleAgentEvent(msg.event, msg.data);
-    } catch (e) {
-      console.error('WS parse error:', e);
-    }
-  };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleAgentEvent(msg.event, msg.data);
+      } catch (e) {
+        console.error('WS parse error:', e);
+      }
+    };
 
-  ws.onclose = () => {
-    appendLog('WebSocket disconnected. Reconnecting in 3s...', 'warning');
-    setTimeout(initWebSocket, 3000);
-  };
+    ws.onclose = () => {
+      appendLog('WebSocket disconnected. Reconnecting in 3s...', 'warning');
+      setTimeout(initWebSocket, 3000);
+    };
+  } catch (e) {
+    console.warn('WebSocket unavailable:', e);
+  }
 }
 
 function handleAgentEvent(event, data) {
@@ -161,20 +172,34 @@ function escapeHtml(str) {
 }
 
 async function loadData() {
+  const isCloud = window.location.hostname.includes('github.io');
+
   try {
-    const [profRes, critRes, appRes] = await Promise.all([
-      fetch('/api/profile').then(r => r.json()),
-      fetch('/api/criteria').then(r => r.json()),
-      fetch('/api/applications').then(r => r.json())
-    ]);
+    let profRes, critRes, appRes;
+
+    if (isCloud) {
+      // Load static configurations for GitHub Pages preview
+      [profRes, critRes, appRes] = await Promise.all([
+        fetch('config/profile.json').then(r => r.json()).catch(() => null),
+        fetch('config/search-criteria.json').then(r => r.json()).catch(() => null),
+        fetch('data/applications.json').then(r => r.json()).catch(() => [])
+      ]);
+      appRes = { applications: Array.isArray(appRes) ? appRes : [], stats: { total: 0, submitted: 0, dryRun: 0, skipped: 0 } };
+    } else {
+      [profRes, critRes, appRes] = await Promise.all([
+        fetch('/api/profile').then(r => r.json()),
+        fetch('/api/criteria').then(r => r.json()),
+        fetch('/api/applications').then(r => r.json())
+      ]);
+    }
 
     currentProfile = profRes;
     currentCriteria = critRes;
     applications = appRes.applications || [];
 
-    populateProfile(currentProfile);
-    populateCriteria(currentCriteria);
-    updateStats(appRes.stats);
+    if (currentProfile) populateProfile(currentProfile);
+    if (currentCriteria) populateCriteria(currentCriteria);
+    if (appRes.stats) updateStats(appRes.stats);
     renderApplicationsTable();
   } catch (err) {
     console.error('Error loading initial data:', err);
@@ -277,6 +302,12 @@ async function refreshApplications() {
 
 function bindEvents() {
   document.getElementById('btnStart').addEventListener('click', async () => {
+    const isCloud = window.location.hostname.includes('github.io');
+    if (isCloud) {
+      alert('You are viewing the dashboard on GitHub Pages (Preview Mode).\n\nTo run autonomous browser applications with your authenticated Chrome profile:\n1. Open the project on your PC.\n2. Double-click "start.bat" or run "npm start".\n3. Click "Start Applying" in the local dashboard at http://localhost:3000.');
+      return;
+    }
+
     const board = document.getElementById('selectBoard').value;
     const dryRun = document.getElementById('checkDryRun').checked;
     const maxApplications = parseInt(document.getElementById('inputMaxApps').value, 10) || 20;
