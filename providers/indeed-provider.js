@@ -422,36 +422,70 @@ export class IndeedProvider extends BaseJobProvider {
         const answer = this.profileManager.answerQuestion(q.prompt, q.type, q.options.map(o => o.text || o.value));
 
         if (q.type === 'radio' && q.options.length > 0) {
-          // Find matching radio
+          // Precise option matching
           const matchedOpt = q.options.find(o =>
+            o.text.toLowerCase() === answer.toLowerCase() ||
+            o.value.toLowerCase() === answer.toLowerCase()
+          ) || q.options.find(o =>
             o.text.toLowerCase().includes(answer.toLowerCase()) ||
             o.value.toLowerCase().includes(answer.toLowerCase())
           ) || q.options[0];
 
           if (matchedOpt && matchedOpt.id) {
-            const radioEl = await ctx.$(`#${matchedOpt.id}`);
-            if (radioEl) await radioEl.click();
+            this.log(`🤖 Copilot answered radio: "${q.prompt.substring(0, 40)}..." ➔ "${matchedOpt.text || matchedOpt.value}"`);
+            const labelEl = await ctx.$(`label[for="${matchedOpt.id}"]`);
+            if (labelEl) {
+              await this.browserManager.humanClick(labelEl, ctx);
+            } else {
+              const radioEl = await ctx.$(`#${matchedOpt.id}`);
+              if (radioEl) await this.browserManager.humanClick(radioEl, ctx);
+            }
           }
         } else if (q.type === 'select' && q.options.length > 0) {
           const matchedOpt = q.options.find(o =>
+            o.text.toLowerCase() === answer.toLowerCase() ||
+            o.value.toLowerCase() === answer.toLowerCase()
+          ) || q.options.find(o =>
             o.text.toLowerCase().includes(answer.toLowerCase()) ||
             o.value.toLowerCase().includes(answer.toLowerCase())
-          );
+          ) || q.options[0];
+
           if (matchedOpt) {
+            this.log(`🤖 Copilot selected dropdown: "${q.prompt.substring(0, 40)}..." ➔ "${matchedOpt.text || matchedOpt.value}"`);
             const selects = await ctx.$$('select');
-            if (selects[q.index]) await selects[q.index].select(matchedOpt.value);
+            if (selects[q.index]) {
+              await selects[q.index].select(matchedOpt.value);
+              await ctx.evaluate((el) => {
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('blur', { bubbles: true }));
+              }, selects[q.index]);
+            }
           }
         } else if (q.type === 'number' || q.type === 'text') {
           const inputs = await ctx.$$('input[type="text"], input[type="number"], input:not([type])');
           if (inputs[q.index]) {
             const currentVal = await ctx.evaluate(el => el.value, inputs[q.index]);
-            if (!currentVal) await inputs[q.index].type(answer, { delay: 20 });
+            if (!currentVal) {
+              this.log(`🤖 Copilot entered: "${q.prompt.substring(0, 40)}..." ➔ "${answer}"`);
+              await ctx.evaluate((el, val) => {
+                el.focus();
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                if (setter) setter.call(el, val);
+                else el.value = val;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('blur', { bubbles: true }));
+              }, inputs[q.index], answer);
+            }
           }
         } else if (q.type === 'textarea') {
           const textareas = await ctx.$$('textarea');
           if (textareas[q.index]) {
             const currentVal = await ctx.evaluate(el => el.value, textareas[q.index]);
-            if (!currentVal) await textareas[q.index].type(this.profileManager.profile.coverLetter, { delay: 10 });
+            if (!currentVal) {
+              this.log(`🤖 Copilot filled tailored statement: "${q.prompt.substring(0, 40)}..."`);
+              await this.browserManager.humanType(textareas[q.index], this.profileManager.profile.coverLetter, ctx);
+            }
           }
         }
       }

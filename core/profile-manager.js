@@ -47,7 +47,7 @@ export class ProfileManager {
   answerQuestion(questionText, inputType = 'text', options = []) {
     const q = questionText.toLowerCase().trim();
 
-    // 1. Authorization & Legal
+    // 1. Authorization, Legal & Company Policy
     if (q.includes('legally authorized') || q.includes('authorized to work') || q.includes('eligible to work')) {
       return this.profile.workAuthorization.legallyAuthorizedInUS ? 'Yes' : 'No';
     }
@@ -56,7 +56,19 @@ export class ProfileManager {
       return this.profile.workAuthorization.requireSponsorship ? 'Yes' : 'No';
     }
 
-    if (q.includes('18 years') || q.includes('at least 18') || q.includes('age')) {
+    if (q.includes('previously employed') || q.includes('worked for this company') || q.includes('worked here before')) {
+      return 'No';
+    }
+
+    if (q.includes('relative') || q.includes('family member') || q.includes('conflict of interest')) {
+      return 'No';
+    }
+
+    if (q.includes('non-compete') || q.includes('restrictive covenant') || q.includes('agreement with another employer')) {
+      return 'No';
+    }
+
+    if (q.includes('18 years') || q.includes('at least 18') || q.includes('21 years') || q.includes('age')) {
       return 'Yes';
     }
 
@@ -76,21 +88,62 @@ export class ProfileManager {
       return this.profile.workAuthorization.willingToRelocate ? 'Yes' : 'No';
     }
 
-    if (q.includes('commute') || q.includes('travel to')) {
+    if (q.includes('commute') || q.includes('travel to') || q.includes('on-site') || q.includes('hybrid') || q.includes('remote')) {
       return 'Yes';
     }
 
-    // 2. Experience Years (e.g. "How many years of work experience do you have with Excel?")
-    if (q.includes('how many years') || q.includes('years of experience') || q.includes('years experience')) {
+    if (q.includes('overtime') || q.includes('weekends') || q.includes('shift') || q.includes('full-time') || q.includes('schedule')) {
+      return 'Yes';
+    }
+
+    // 2. Certifications & Qualifications
+    if (q.includes('six sigma') || q.includes('green belt')) {
+      if (options.length > 0) {
+        const progOpt = options.find(o => o.toLowerCase().includes('progress') || o.toLowerCase().includes('yes'));
+        if (progOpt) return progOpt;
+      }
+      return 'Yes';
+    }
+
+    if (q.includes('apics') || q.includes('cscp') || q.includes('ascm')) {
+      if (options.length > 0) {
+        const progOpt = options.find(o => o.toLowerCase().includes('progress') || o.toLowerCase().includes('yes'));
+        if (progOpt) return progOpt;
+      }
+      return 'Yes';
+    }
+
+    // 3. Tool Proficiency Levels (Expert / Advanced / Intermediate)
+    if (q.includes('proficiency') || q.includes('skill level') || q.includes('how proficient') || q.includes('how familiar')) {
+      if (options.length > 0) {
+        const advancedOpt = options.find(o =>
+          o.toLowerCase().includes('advanced') ||
+          o.toLowerCase().includes('expert') ||
+          o.toLowerCase().includes('proficient') ||
+          o.toLowerCase().startsWith('5') ||
+          o.toLowerCase().startsWith('4')
+        );
+        if (advancedOpt) return advancedOpt;
+      }
+      return 'Advanced';
+    }
+
+    // 4. Experience Years (Precise matching per skill/tool)
+    if (q.includes('how many years') || q.includes('years of experience') || q.includes('years experience') || q.includes('experience do you have with')) {
       for (const [skill, years] of Object.entries(this.profile.skillsYearsOfExperience)) {
         if (q.includes(skill.toLowerCase())) {
+          if (options.length > 0) {
+            // Find option matching years (e.g. "3-5 years" or "5+ years")
+            const matchOpt = options.find(o => o.includes(years.toString()) || o.toLowerCase().includes('5+'));
+            if (matchOpt) return matchOpt;
+          }
           return years.toString();
         }
       }
       return (this.profile.screeningAnswers.default_experience_years || 5).toString();
     }
 
-    // 3. Compensation
+    // 5. Compensation
     if (q.includes('desired salary') || q.includes('expected salary') || q.includes('target salary') || q.includes('compensation expectation')) {
       if (q.includes('hour') || q.includes('hourly')) {
         return this.profile.compensation.expectedHourlyRate.toString();
@@ -98,7 +151,7 @@ export class ProfileManager {
       return this.profile.compensation.expectedSalaryAnnual.toString();
     }
 
-    // 4. Education
+    // 6. Education
     if (q.includes('highest level of education') || q.includes('education level') || q.includes('degree completed')) {
       if (options.length > 0) {
         const masterOpt = options.find(o => o.toLowerCase().includes('master'));
@@ -109,7 +162,7 @@ export class ProfileManager {
       return this.profile.education.highestLevel;
     }
 
-    // 5. Notice Period / Start Date
+    // 7. Notice Period / Start Date
     if (q.includes('notice') || q.includes('start date') || q.includes('how soon') || q.includes('availability')) {
       if (inputType === 'number') return '14';
       return '2 weeks';
