@@ -47,10 +47,10 @@ export class BrowserManager {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
-      '--disable-infobars',
-      '--window-size=1280,900',
+      '--window-size=1920,1080',
       '--start-maximized',
-      '--lang=en-US,en'
+      '--lang=en-US,en',
+      '--disable-features=IsolateOrigins,site-per-process'
     ];
 
     try {
@@ -90,19 +90,15 @@ export class BrowserManager {
 
       // Clean webdriver flags and auto-kill beforeunload popups ("Leave site? Changes you made may not be saved")
       await this.activePage.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        window.navigator.chrome = {
-          runtime: {},
-          loadTimes: function() {},
-          csi: function() {},
-          app: {}
-        };
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5]
-        });
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['en-US', 'en']
-        });
+        try {
+          delete Object.getPrototypeOf(navigator).webdriver;
+        } catch (e) {}
+        try {
+          Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+          Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+          Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+          Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        } catch (e) {}
         try {
           Object.defineProperty(window, 'onbeforeunload', {
             get: () => null,
@@ -238,15 +234,27 @@ export class BrowserManager {
 
   /**
    * Inject a visual human-like cursor overlay so the user can see natural cursor motion
+   * Uses Shadow DOM and CustomEvent to avoid polluting window properties or global DOM identifiers
    */
   async injectHumanCursor(pageOrFrame) {
     try {
       const page = this._resolvePage(pageOrFrame);
       if (!page || page.isClosed()) return;
       await page.evaluate(() => {
-        if (document.getElementById('__human_cursor_overlay__')) return;
+        if (document.getElementById('__hc_host__')) return;
+        const host = document.createElement('div');
+        host.id = '__hc_host__';
+        host.style.position = 'fixed';
+        host.style.top = '0';
+        host.style.left = '0';
+        host.style.width = '0';
+        host.style.height = '0';
+        host.style.pointerEvents = 'none';
+        host.style.zIndex = '2147483647';
+
+        const shadow = host.attachShadow({ mode: 'open' });
+
         const cursor = document.createElement('div');
-        cursor.id = '__human_cursor_overlay__';
         cursor.style.position = 'fixed';
         cursor.style.top = '0';
         cursor.style.left = '0';
@@ -257,7 +265,6 @@ export class BrowserManager {
         cursor.style.border = '2px solid rgba(255, 255, 255, 0.95)';
         cursor.style.boxShadow = '0 0 12px rgba(59, 130, 246, 0.8), 0 2px 6px rgba(0,0,0,0.35)';
         cursor.style.pointerEvents = 'none';
-        cursor.style.zIndex = '2147483647';
         cursor.style.transition = 'transform 0.05s ease-out, opacity 0.2s';
         cursor.style.transform = 'translate(350px, 350px)';
         cursor.style.display = 'block';
@@ -271,13 +278,25 @@ export class BrowserManager {
         dot.style.borderRadius = '50%';
         dot.style.backgroundColor = '#ffffff';
         cursor.appendChild(dot);
+        shadow.appendChild(cursor);
 
-        document.documentElement.appendChild(cursor);
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes __cursor_ripple {
+            0% { transform: scale(0.6); opacity: 1; }
+            100% { transform: scale(2.2); opacity: 0; }
+          }
+        `;
+        shadow.appendChild(style);
 
-        window.__updateHumanCursor = (x, y, isClick = false) => {
-          const c = document.getElementById('__human_cursor_overlay__');
-          if (!c) return;
-          c.style.transform = `translate(${x - 9}px, ${y - 9}px) scale(${isClick ? 0.75 : 1})`;
+        document.documentElement.appendChild(host);
+
+        window.addEventListener('__cur_tick__', (e) => {
+          const detail = e.detail;
+          if (!detail) return;
+          const { x, y, isClick } = detail;
+          if (x === undefined || y === undefined) return;
+          cursor.style.transform = `translate(${x - 9}px, ${y - 9}px) scale(${isClick ? 0.75 : 1})`;
           if (isClick) {
             const ripple = document.createElement('div');
             ripple.style.position = 'fixed';
@@ -288,24 +307,11 @@ export class BrowserManager {
             ripple.style.borderRadius = '50%';
             ripple.style.border = '2px solid rgba(59, 130, 246, 0.9)';
             ripple.style.pointerEvents = 'none';
-            ripple.style.zIndex = '2147483646';
             ripple.style.animation = '__cursor_ripple 0.4s ease-out forwards';
-            document.documentElement.appendChild(ripple);
+            shadow.appendChild(ripple);
             setTimeout(() => ripple.remove(), 400);
           }
-        };
-
-        if (!document.getElementById('__cursor_style__')) {
-          const style = document.createElement('style');
-          style.id = '__cursor_style__';
-          style.textContent = `
-            @keyframes __cursor_ripple {
-              0% { transform: scale(0.6); opacity: 1; }
-              100% { transform: scale(2.2); opacity: 0; }
-            }
-          `;
-          document.head.appendChild(style);
-        }
+        });
       }).catch(() => {});
     } catch (e) {}
   }
@@ -365,9 +371,9 @@ export class BrowserManager {
         }
 
         await targetPage.mouse.move(cx, cy).catch(() => {});
-        targetPage.evaluate((x, y) => {
-          if (window.__updateHumanCursor) window.__updateHumanCursor(x, y, false);
-        }, cx, cy).catch(() => {});
+        targetPage.evaluate((detail) => {
+          window.dispatchEvent(new CustomEvent('__cur_tick__', { detail }));
+        }, { x: cx, y: cy, isClick: false }).catch(() => {});
 
         this.cursorPos = { x: cx, y: cy };
         // Ease-out deceleration curve
@@ -384,9 +390,9 @@ export class BrowserManager {
           const ccx = overshootX + (targetX - overshootX) * ct;
           const ccy = overshootY + (targetY - overshootY) * ct;
           await targetPage.mouse.move(ccx, ccy).catch(() => {});
-          targetPage.evaluate((x, y) => {
-            if (window.__updateHumanCursor) window.__updateHumanCursor(x, y, false);
-          }, ccx, ccy).catch(() => {});
+          targetPage.evaluate((detail) => {
+            window.dispatchEvent(new CustomEvent('__cur_tick__', { detail }));
+          }, { x: ccx, y: ccy, isClick: false }).catch(() => {});
           this.cursorPos = { x: ccx, y: ccy };
           await this.delay(12);
         }
@@ -394,9 +400,9 @@ export class BrowserManager {
 
       this.cursorPos = { x: targetX, y: targetY };
       await targetPage.mouse.move(targetX, targetY).catch(() => {});
-      targetPage.evaluate((x, y) => {
-        if (window.__updateHumanCursor) window.__updateHumanCursor(x, y, false);
-      }, targetX, targetY).catch(() => {});
+      targetPage.evaluate((detail) => {
+        window.dispatchEvent(new CustomEvent('__cur_tick__', { detail }));
+      }, { x: targetX, y: targetY, isClick: false }).catch(() => {});
     } catch (e) {}
   }
 
@@ -606,9 +612,9 @@ export class BrowserManager {
         await this.delay(Math.floor(Math.random() * 90) + 50);
 
         // Visual click effect
-        targetPage.evaluate((x, y) => {
-          if (window.__updateHumanCursor) window.__updateHumanCursor(x, y, true);
-        }, offsetX, offsetY).catch(() => {});
+        targetPage.evaluate((detail) => {
+          window.dispatchEvent(new CustomEvent('__cur_tick__', { detail }));
+        }, { x: offsetX, y: offsetY, isClick: true }).catch(() => {});
 
         // Physical mouse down & hold & up
         await targetPage.mouse.down().catch(() => {});

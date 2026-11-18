@@ -15,22 +15,22 @@ export class GreenhouseProvider extends BaseJobProvider {
     this.emit('status', { jobId: job.jobId, status: 'STARTING', job });
 
     try {
-      await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000, referer: 'https://boards.greenhouse.io/' });
       await this.browserManager.delay(2000);
       await this.browserManager.dismissBeforeUnload(page);
 
       // Contact info
       const firstNameEl = await page.$('#first_name, input[name*="first_name"]');
-      if (firstNameEl) await firstNameEl.type(profile.personal.firstName, { delay: 25 });
+      if (firstNameEl) await this.browserManager.humanType(firstNameEl, profile.personal.firstName, page);
 
       const lastNameEl = await page.$('#last_name, input[name*="last_name"]');
-      if (lastNameEl) await lastNameEl.type(profile.personal.lastName, { delay: 25 });
+      if (lastNameEl) await this.browserManager.humanType(lastNameEl, profile.personal.lastName, page);
 
       const emailEl = await page.$('#email, input[name*="email"]');
-      if (emailEl) await emailEl.type(profile.personal.email, { delay: 25 });
+      if (emailEl) await this.browserManager.humanType(emailEl, profile.personal.email, page);
 
       const phoneEl = await page.$('#phone, input[name*="phone"]');
-      if (phoneEl) await phoneEl.type(profile.personal.phone, { delay: 25 });
+      if (phoneEl) await this.browserManager.humanType(phoneEl, profile.personal.phone, page);
 
       // Resume upload
       if (resumePath) {
@@ -44,10 +44,10 @@ export class GreenhouseProvider extends BaseJobProvider {
 
       // Links (LinkedIn, Website)
       const linkedInInput = await page.$('input[autocomplete*="custom-question-linkedin"], input[name*="linkedin" i]');
-      if (linkedInInput) await linkedInInput.type(profile.personal.links.linkedin, { delay: 20 });
+      if (linkedInInput) await this.browserManager.humanType(linkedInInput, profile.personal.links.linkedin, page);
 
       const websiteInput = await page.$('input[name*="website" i], input[name*="portfolio" i]');
-      if (websiteInput) await websiteInput.type(profile.personal.links.portfolio, { delay: 20 });
+      if (websiteInput) await this.browserManager.humanType(websiteInput, profile.personal.links.portfolio, page);
 
       // Answer Custom Screening Questions
       await this.fillCustomQuestions(page, job);

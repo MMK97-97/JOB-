@@ -1,21 +1,6 @@
 [
   {
-    "id": "app_1794980856862_awbd1r",
-    "jobId": "bfb4b284e5fc8c68",
-    "title": "Warehouse Lead (2nd Shift)",
-    "company": "Chadwell Supply",
-    "location": "Tampa, FL 33619",
-    "url": "https://www.indeed.com/viewjob?jk=bfb4b284e5fc8c68",
-    "board": "indeed",
-    "matchScore": 60,
-    "salary": "Monday to Friday +2",
-    "status": "REQUIRES_VERIFICATION",
-    "screenshot": null,
-    "appliedAt": "2026-11-18T05:47:36.862Z",
-    "notes": "Pending final review or verification"
-  },
-  {
-    "id": "app_1794980178515_9iyyv6",
+    "id": "app_1794982185135_fal6y2",
     "jobId": "330a0f47c2771cfb",
     "title": "Heavy-Duty Truck Buyer – Fleet & Salvage Acquisitions",
     "company": "DC HEAVY EQUIPMENT AND TRUCK PARTS",
@@ -25,12 +10,12 @@
     "matchScore": 65,
     "salary": "Not listed",
     "status": "REQUIRES_VERIFICATION",
-    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-330a0f47c2771cfb-1794980178355.png",
-    "appliedAt": "2026-11-18T05:36:18.515Z",
+    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-330a0f47c2771cfb-1794982184987.png",
+    "appliedAt": "2026-11-18T06:09:45.135Z",
     "notes": "Pending final review or verification"
   },
   {
-    "id": "app_1794980035039_rh6osq",
+    "id": "app_1794982024366_8r1vn9",
     "jobId": "7ce75f656c36c03a",
     "title": "Operations Inventory Specialist",
     "company": "Alessi Bakeries",
@@ -39,10 +24,10 @@
     "board": "indeed",
     "matchScore": 65,
     "salary": "Not listed",
-    "status": "REQUIRES_VERIFICATION",
-    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-7ce75f656c36c03a-1794980034927.png",
-    "appliedAt": "2026-11-18T05:33:55.039Z",
-    "notes": "Pending final review or verification"
+    "status": "SUBMITTED",
+    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-7ce75f656c36c03a-1794982024258.png",
+    "appliedAt": "2026-11-18T06:07:04.366Z",
+    "notes": "Successfully submitted"
   },
   {
     "id": "app_1794978671088_uvc10p",

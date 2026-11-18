@@ -17,32 +17,32 @@ export class LeverProvider extends BaseJobProvider {
     try {
       // Ensure apply page URL
       const applyUrl = job.url.endsWith('/apply') ? job.url : `${job.url.replace(/\/$/, '')}/apply`;
-      await page.goto(applyUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await page.goto(applyUrl, { waitUntil: 'domcontentloaded', timeout: 35000, referer: 'https://jobs.lever.co/' });
       await this.browserManager.delay(2000);
       await this.browserManager.dismissBeforeUnload(page);
 
       // Full Name
       const nameEl = await page.$('input[name="name"]');
-      if (nameEl) await nameEl.type(profile.personal.fullName, { delay: 20 });
+      if (nameEl) await this.browserManager.humanType(nameEl, profile.personal.fullName, page);
 
       // Email
       const emailEl = await page.$('input[name="email"]');
-      if (emailEl) await emailEl.type(profile.personal.email, { delay: 20 });
+      if (emailEl) await this.browserManager.humanType(emailEl, profile.personal.email, page);
 
       // Phone
       const phoneEl = await page.$('input[name="phone"]');
-      if (phoneEl) await phoneEl.type(profile.personal.phone, { delay: 20 });
+      if (phoneEl) await this.browserManager.humanType(phoneEl, profile.personal.phone, page);
 
       // Current Company
       const orgEl = await page.$('input[name="org"]');
-      if (orgEl) await orgEl.type('Stark Premium', { delay: 20 });
+      if (orgEl) await this.browserManager.humanType(orgEl, 'Stark Premium', page);
 
       // Links
       const linkedInEl = await page.$('input[name="urls[LinkedIn]"], input[name*="linkedin" i]');
-      if (linkedInEl) await linkedInEl.type(profile.personal.links.linkedin, { delay: 20 });
+      if (linkedInEl) await this.browserManager.humanType(linkedInEl, profile.personal.links.linkedin, page);
 
       const portfolioEl = await page.$('input[name="urls[Portfolio]"], input[name*="portfolio" i]');
-      if (portfolioEl) await portfolioEl.type(profile.personal.links.portfolio, { delay: 20 });
+      if (portfolioEl) await this.browserManager.humanType(portfolioEl, profile.personal.links.portfolio, page);
 
       // Upload Resume
       if (resumePath) {
@@ -56,7 +56,7 @@ export class LeverProvider extends BaseJobProvider {
 
       // Additional information / Cover letter
       const commentsEl = await page.$('textarea[name="comments"]');
-      if (commentsEl) await commentsEl.type(profile.coverLetter, { delay: 10 });
+      if (commentsEl) await this.browserManager.humanType(commentsEl, profile.coverLetter, page);
 
       // Custom Lever screening questions
       await this.fillCustomQuestions(page, job);

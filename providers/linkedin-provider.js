@@ -14,7 +14,7 @@ export class LinkedInProvider extends BaseJobProvider {
     const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedQ}&location=${encodedL}&f_AL=true`;
 
     this.log(`Searching LinkedIn Easy Apply jobs: ${searchUrl}`);
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000, referer: 'https://www.linkedin.com/feed/' });
     await this.browserManager.delay(3000);
 
     const jobs = await page.evaluate(() => {
@@ -68,7 +68,7 @@ export class LinkedInProvider extends BaseJobProvider {
     this.emit('status', { jobId: job.jobId, status: 'STARTING', job });
 
     try {
-      await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000, referer: 'https://www.linkedin.com/jobs/' });
       await this.browserManager.delay(2500);
 
       // Authentic human eye-tracking & job posting reading skim
@@ -209,13 +209,13 @@ export class LinkedInProvider extends BaseJobProvider {
       const phoneInput = await page.$('input[id*="phoneNumber"], input[name*="phoneNumber"], input[id*="phone"]');
       if (phoneInput) {
         const val = await page.evaluate(el => el.value, phoneInput);
-        if (!val) await phoneInput.type(profile.personal.rawPhone || profile.personal.phone, { delay: 25 });
+        if (!val) await this.browserManager.humanType(phoneInput, profile.personal.rawPhone || profile.personal.phone, page);
       }
 
       const emailInput = await page.$('input[id*="email"], input[name*="email"]');
       if (emailInput) {
         const val = await page.evaluate(el => el.value, emailInput);
-        if (!val) await emailInput.type(profile.personal.email, { delay: 25 });
+        if (!val) await this.browserManager.humanType(emailInput, profile.personal.email, page);
       }
     } catch (e) {}
   }

@@ -32,7 +32,7 @@ export class IndeedProvider extends BaseJobProvider {
 
       this.log(`Navigating to search URL (Page ${pNum + 1}): ${searchUrl}`);
       try {
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000, referer: 'https://www.indeed.com/' });
       } catch (e) {
         break;
       }
@@ -163,13 +163,13 @@ export class IndeedProvider extends BaseJobProvider {
       }
 
       try {
-        await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+        await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000, referer: 'https://www.indeed.com/jobs' });
       } catch (navErr) {
         if (navErr.message.includes('ERR_ABORTED') || navErr.message.includes('Target closed') || navErr.message.includes('Execution context')) {
           this.log(`Retrying navigation to ${job.url}...`);
           await this.browserManager.delay(2000);
           page = await this.browserManager.getPage();
-          await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+          await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000, referer: 'https://www.indeed.com/jobs' });
         } else {
           throw navErr;
         }
@@ -370,28 +370,28 @@ export class IndeedProvider extends BaseJobProvider {
       const firstNameInput = await ctx.$('input[id*="first" i], input[name*="first" i], input[autocomplete*="given-name"]');
       if (firstNameInput) {
         const val = await ctx.evaluate(el => el.value, firstNameInput);
-        if (!val) await firstNameInput.type(profile.personal.firstName, { delay: 30 });
+        if (!val) await this.browserManager.humanType(firstNameInput, profile.personal.firstName, ctx);
       }
 
       // Last Name
       const lastNameInput = await ctx.$('input[id*="last" i], input[name*="last" i], input[autocomplete*="family-name"]');
       if (lastNameInput) {
         const val = await ctx.evaluate(el => el.value, lastNameInput);
-        if (!val) await lastNameInput.type(profile.personal.lastName, { delay: 30 });
+        if (!val) await this.browserManager.humanType(lastNameInput, profile.personal.lastName, ctx);
       }
 
       // Phone
       const phoneInput = await ctx.$('input[type="tel"], input[id*="phone" i], input[name*="phone" i]');
       if (phoneInput) {
         const val = await ctx.evaluate(el => el.value, phoneInput);
-        if (!val) await phoneInput.type(profile.personal.rawPhone, { delay: 30 });
+        if (!val) await this.browserManager.humanType(phoneInput, profile.personal.rawPhone, ctx);
       }
 
       // City / Location
       const cityInput = await ctx.$('input[id*="city" i], input[name*="city" i], input[id*="location" i]');
       if (cityInput) {
         const val = await ctx.evaluate(el => el.value, cityInput);
-        if (!val) await cityInput.type(`${profile.personal.location.city}, ${profile.personal.location.state}`, { delay: 30 });
+        if (!val) await this.browserManager.humanType(cityInput, `${profile.personal.location.city}, ${profile.personal.location.state}`, ctx);
       }
     } catch (e) {
       // ignore minor input field fill errors
@@ -439,24 +439,29 @@ export class IndeedProvider extends BaseJobProvider {
   async handleResumeUpload(ctx, resumePath) {
     try {
       // 1. If an existing profile resume card/radio is present, confirm it is selected
-      const hasExistingResume = await ctx.evaluate(() => {
+      const resumeRadioHandle = await ctx.evaluateHandle(() => {
         const resumeRadios = Array.from(document.querySelectorAll('input[type="radio"][value*="resume" i], input[type="radio"][id*="resume" i], input[type="radio"]'));
         const targetRadio = resumeRadios.find(r => {
           const lbl = document.querySelector(`label[for="${r.id}"]`) || r.parentElement;
           const text = (lbl ? lbl.innerText : '').toLowerCase();
           return text.includes('resume') || text.includes('.pdf') || text.includes('uploaded');
         });
-
-        if (targetRadio && !targetRadio.checked) {
-          targetRadio.click();
-          return true;
+        if (targetRadio) {
+          const lbl = document.querySelector(`label[for="${targetRadio.id}"]`) || targetRadio.parentElement;
+          return { el: lbl || targetRadio, isChecked: targetRadio.checked };
         }
-        return !!targetRadio;
-      });
+        return null;
+      }).catch(() => null);
 
-      if (hasExistingResume) {
-        this.log('🤖 Confirmed active candidate ATS resume');
-        return; // Retain active ATS resume without triggering unnecessary dirty upload
+      if (resumeRadioHandle && resumeRadioHandle.asElement()) {
+        const status = await ctx.evaluate(h => h ? h.isChecked : false, resumeRadioHandle).catch(() => false);
+        if (status) {
+          this.log('🤖 Confirmed active candidate ATS resume');
+          return;
+        }
+        await this.browserManager.humanClick(resumeRadioHandle.asElement(), ctx);
+        this.log('🤖 Selected candidate ATS resume on file with natural pointer event');
+        return;
       }
 
       // 2. Only upload file if no existing resume is selected
@@ -899,7 +904,7 @@ export class IndeedProvider extends BaseJobProvider {
           text.includes('no, i do not have a disability') ||
           text.includes('not hispanic')
         ) {
-          await lbl.click().catch(() => {});
+          await this.browserManager.humanClick(lbl, ctx).catch(() => {});
         }
       }
     } catch (e) {
