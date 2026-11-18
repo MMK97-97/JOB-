@@ -57,16 +57,19 @@ export class JobMatcher {
       }
     }
 
-    // Role word match (e.g. Supply Chain, Inventory, Procurement, Planner, Buyer, Sourcing, Logistics)
+    // Role word match (any supply chain related domain)
     if (!titleMatched) {
       const coreRoleWords = [
         'supply chain', 'procurement', 'inventory', 'planner', 'planning',
-        'purchasing', 'buyer', 'logistics', 'sourcing', 'operations', 'materials'
+        'purchasing', 'buyer', 'logistics', 'sourcing', 'operations', 'materials',
+        'demand', 'inbound', 'fulfillment', 'freight', 'vendor', 'supplier',
+        'distribution', 'warehouse', 'reorder', 'scheduler', 's&op'
       ];
       for (const rw of coreRoleWords) {
         if (title.includes(rw)) {
-          score += 25;
-          matchedKeywords.push(`Role Match: ${rw}`);
+          score += 30;
+          titleMatched = true;
+          matchedKeywords.push(`Supply Chain Role: ${rw}`);
           break;
         }
       }
