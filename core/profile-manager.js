@@ -113,6 +113,9 @@ export class ProfileManager {
       q.includes('overtime') || q.includes('show up daily') || q.includes('attendance') ||
       q.includes('essential to the success') || q.includes('highest level of education') ||
       q.includes('degree') || q.includes('years of experience') || q.includes('how many years') ||
+      q.includes('years experience') || q.includes('number of years') || q.includes('how many') ||
+      q.includes('bilingual') || q.includes('spanish') || q.includes('espanol') ||
+      q.includes('fishbowl') || q.includes('traceability') ||
       q.includes('salary') || q.includes('compensation') || q.includes('pay') ||
       q.includes('hourly') || q.includes('rate') || q.includes('notice') ||
       q.includes('start date') || q.includes('availability') || q.includes('cover letter') ||
@@ -185,17 +188,46 @@ export class ProfileManager {
       return commuteAns;
     }
 
-    // If input is textarea or open-ended text without options, generate tailored statement based on resume
-    if (inputType === 'textarea' || (inputType === 'text' && (!options || options.length === 0))) {
-      // If it's a short question in a single-line text input that expects a simple Yes/No
-      if (inputType === 'text' && (q.startsWith('are you') || q.startsWith('do you') || q.startsWith('can you') || q.startsWith('will you') || q.startsWith('have you'))) {
-        if (q.includes('sponsorship') || q.includes('felony') || q.includes('terminated') || q.includes('fired') || q.includes('convicted')) {
-          return 'No';
+    // 1. Experience Years / Numeric Questions (Always returns a clean integer, NEVER sentences)
+    if (
+      q.includes('how many years') ||
+      q.includes('years of experience') ||
+      q.includes('years experience') ||
+      q.includes('number of years') ||
+      q.includes('how many') ||
+      inputType === 'number'
+    ) {
+      let matchedYears = null;
+      for (const [skill, years] of Object.entries(this.profile.skillsYearsOfExperience || {})) {
+        if (q.includes(skill.toLowerCase())) {
+          matchedYears = years;
+          break;
         }
-        return 'Yes';
+      }
+      if (matchedYears === null) {
+        matchedYears = this.profile.screeningAnswers?.default_experience_years || 5;
       }
 
-      return this.generateTailoredTextAnswer(questionText);
+      if (options && options.length > 0) {
+        const matchOpt = options.find(o =>
+          o.includes(matchedYears.toString()) ||
+          (matchedYears >= 5 && (o.includes('5+') || o.includes('5 or more') || o.includes('5-'))) ||
+          (matchedYears >= 3 && (o.includes('3+') || o.includes('3-5')))
+        );
+        if (matchOpt) return matchOpt;
+      }
+
+      return matchedYears.toString();
+    }
+
+    // 2. Bilingual / Foreign Language Questions (Manoj is fluent in English, Hindi, Telugu; not Spanish)
+    if (q.includes('bilingual') || q.includes('spanish') || q.includes('espanol')) {
+      const spanishAns = this.profile.screeningAnswers?.bilingual_spanish || 'No';
+      if (options && options.length > 0) {
+        const match = options.find(o => o.toLowerCase() === spanishAns.toLowerCase() || o.toLowerCase().startsWith('no'));
+        if (match) return match;
+      }
+      return spanishAns;
     }
 
     // 1. Authorization, Legal & Company Policy
@@ -453,8 +485,19 @@ export class ProfileManager {
     }
 
     // Default numeric answer
-    if (inputType === 'number') {
+    if (inputType === 'number' || q.includes('how many years') || q.includes('years of experience') || q.includes('number of years')) {
       return '5';
+    }
+
+    // 8. Final Fallback: Open-ended textarea or tailored statements
+    if (inputType === 'textarea' || (inputType === 'text' && (!options || options.length === 0))) {
+      if (q.startsWith('are you') || q.startsWith('do you') || q.startsWith('can you') || q.startsWith('will you') || q.startsWith('have you')) {
+        if (q.includes('sponsorship') || q.includes('felony') || q.includes('terminated') || q.includes('fired') || q.includes('convicted') || q.includes('bilingual') || q.includes('spanish')) {
+          return 'No';
+        }
+        return 'Yes';
+      }
+      return this.generateTailoredTextAnswer(questionText);
     }
 
     return 'Yes';
@@ -462,6 +505,14 @@ export class ProfileManager {
 
   generateTailoredTextAnswer(questionText) {
     const q = questionText.toLowerCase().trim();
+
+    // Safeguards: Never generate sentences for numeric or bilingual prompts
+    if (q.includes('how many years') || q.includes('years of experience') || q.includes('number of years') || q.includes('how many')) {
+      return '5';
+    }
+    if (q.includes('bilingual') || q.includes('spanish') || q.includes('espanol')) {
+      return 'No';
+    }
 
     // 1. Cover letter prompt
     if (q.includes('cover letter') || q.includes('statement of purpose') || q.includes('letter of interest')) {

@@ -6,6 +6,7 @@ export class LinkedInProvider extends BaseJobProvider {
   }
 
   async search(query, location, options = {}) {
+    if (options.isCancelled && options.isCancelled()) return [];
     const page = await this.browserManager.getPage();
     const encodedQ = encodeURIComponent(query);
     const encodedL = encodeURIComponent(location);
@@ -263,6 +264,14 @@ export class LinkedInProvider extends BaseJobProvider {
             let type = 'unknown';
             let options = [];
 
+            const pLower = prompt.toLowerCase();
+            const isNumericPrompt =
+              pLower.includes('how many years') ||
+              pLower.includes('years of experience') ||
+              pLower.includes('number of years') ||
+              pLower.includes('years experience') ||
+              pLower.includes('how many');
+
             if (textarea) type = 'textarea';
             else if (radios.length > 0) {
               type = 'radio';
@@ -283,7 +292,7 @@ export class LinkedInProvider extends BaseJobProvider {
               select.querySelectorAll('option').forEach(o => {
                 if (o.value) options.push({ value: o.value, text: o.innerText.trim() });
               });
-            } else if (numInput) type = 'number';
+            } else if (numInput || isNumericPrompt) type = 'number';
             else if (textInput) type = 'text';
 
             items.push({ index: idx, prompt, type, options });
@@ -410,10 +419,32 @@ export class LinkedInProvider extends BaseJobProvider {
 
           // Text / Number
           const input = sec.querySelector('input[type="text"], input[type="number"], input:not([type])');
-          if (input && !input.value) {
-            input.value = answer;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
+          if (input) {
+            const pText = prompt.toLowerCase();
+            const isNumeric =
+              pText.includes('how many years') ||
+              pText.includes('years of experience') ||
+              pText.includes('number of years') ||
+              pText.includes('years experience') ||
+              pText.includes('how many') ||
+              input.type === 'number';
+
+            let finalVal = answer;
+            if (isNumeric) {
+              const numMatch = (answer || '').match(/\d+/);
+              finalVal = numMatch ? numMatch[0] : '5';
+            }
+
+            const hasInvalidText = isNumeric && (!/^\d+$/.test((input.value || '').trim()));
+            if (!input.value || hasInvalidText) {
+              input.focus();
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+              if (setter) setter.call(input, finalVal);
+              else input.value = finalVal;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              input.dispatchEvent(new Event('blur', { bubbles: true }));
+            }
           }
         });
       }, answersMap);

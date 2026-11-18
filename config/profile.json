@@ -64,7 +64,10 @@
     "continuous improvement": 4,
     "lean six sigma": 2,
     "python": 2,
-    "javascript": 2
+    "javascript": 2,
+    "fishbowl": 3,
+    "traceability": 5,
+    "microsoft excel": 5
   },
   "workExperience": [
     {
@@ -135,9 +138,18 @@
     "automotive_parts": "Yes",
     "overtime_daily": "Yes",
     "highest_education": "Master's Degree",
+    "bilingual_spanish": "No",
+    "spanish": "No",
     "notice_period": "2 weeks",
     "default_experience_years": 5
   },
-  "customAnswers": {},
+  "customAnswers": {
+    "do you consent to being contacted about this job via textsms": {
+      "prompt": "Do you consent to being contacted about this job via text/SMS?* *",
+      "answer": "No",
+      "type": "radio",
+      "savedAt": "2026-11-18T05:42:49.296Z"
+    }
+  },
   "coverLetter": "Dear Hiring Team,\n\nI am writing to express my strong interest in this position. With over 5 years of hands-on experience in demand forecasting, inventory planning, ERP operations, procurement, and supplier management across U.S., Canada, and international operations, I have consistently driven operational efficiency, reduced stockouts, and optimized inventory workflows.\n\nIn my recent role at Stark Premium, I managed 900+ SKUs, 80+ vendors, and coordinated ~$1M monthly purchasing with $1M+ inventory under management. Furthermore, I built an AI-enabled Supply Chain Intelligence Platform to automate demand forecasting and reorder analytics. My strong technical background spanning Advanced Excel, SQL, Power BI, and ERP systems allows me to translate complex operational data into actionable business outcomes.\n\nI would welcome the opportunity to discuss how my skill set and proactive approach can contribute to your team's ongoing success.\n\nSincerely,\nManoj Kumar Manne\n+1 (309) 621-0588 | manoj.k.manne@gmail.com"
 }

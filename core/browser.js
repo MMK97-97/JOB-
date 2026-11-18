@@ -412,7 +412,32 @@ export class BrowserManager {
     }
   }
 
+  registerAgent(agent) {
+    this.agent = agent;
+  }
+
   delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    if (!this.agent) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    return new Promise(resolve => {
+      const start = Date.now();
+      const interval = setInterval(() => {
+        // Immediate breakout if agent has been stopped
+        if (this.agent && !this.agent.isRunning) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        // If agent is paused, hold without consuming elapsed time
+        if (this.agent && this.agent.isPaused) {
+          return;
+        }
+        if (Date.now() - start >= ms) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
   }
 }

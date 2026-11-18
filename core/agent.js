@@ -14,6 +14,7 @@ export class JobAgent extends EventEmitter {
     this.profileManager = new ProfileManager();
     this.tracker = new ApplicationTracker();
     this.browserManager = new BrowserManager(this.profileManager.searchCriteria.browser || {});
+    this.browserManager.registerAgent(this);
     this.matcher = new JobMatcher(this.profileManager.profile, this.profileManager.searchCriteria);
 
     this.providers = {
@@ -143,7 +144,11 @@ export class JobAgent extends EventEmitter {
             if (!this.isRunning || appliedCount >= maxApps) break;
 
             this.log(`🔍 Searching for "${title}" in "${loc}" on ${provider.name.toUpperCase()}...`);
-            const foundJobs = await provider.search(title, loc, criteria);
+            const foundJobs = await provider.search(title, loc, {
+              ...criteria,
+              isCancelled: () => !this.isRunning,
+              isPaused: () => this.isPaused
+            });
             this.emit('search-results', { title, location: loc, count: foundJobs.length, jobs: foundJobs });
 
           for (const job of foundJobs) {
@@ -228,7 +233,21 @@ export class JobAgent extends EventEmitter {
   async stop() {
     this.isRunning = false;
     this.isPaused = false;
-    this.log('Agent stop requested.', 'info');
+    this.log('🛑 Agent stop requested. Immediately cancelling active tasks...', 'info');
     this.emit('agent-state', { state: 'STOPPED' });
+
+    // Close any auxiliary job application popups/tabs
+    if (this.browserManager && this.browserManager.browser) {
+      try {
+        const pages = await this.browserManager.browser.pages().catch(() => []);
+        if (pages.length > 1) {
+          for (let i = 1; i < pages.length; i++) {
+            if (pages[i] && !pages[i].isClosed()) {
+              await pages[i].close().catch(() => {});
+            }
+          }
+        }
+      } catch (e) {}
+    }
   }
 }

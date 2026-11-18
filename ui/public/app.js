@@ -304,12 +304,18 @@ function populateProfile(profile) {
   if (document.getElementById('profDisability')) document.getElementById('profDisability').value = e.disabilityStatus || 'No, I do not have a disability';
 
   // Role Experience & Work Habit Answers
+  const skillsExp = profile.skillsYearsOfExperience || {};
   if (document.getElementById('profAutoParts')) document.getElementById('profAutoParts').value = s.automotive_parts || 'Yes';
   if (document.getElementById('profOvertime')) document.getElementById('profOvertime').value = s.overtime_daily || 'Yes';
   if (document.getElementById('profRelocate')) document.getElementById('profRelocate').value = s.relocate || (w.willingToRelocate ? 'Yes' : 'No');
   if (document.getElementById('profCommute')) document.getElementById('profCommute').value = s.commute_ok || 'Yes';
   if (document.getElementById('profEducation')) document.getElementById('profEducation').value = s.highest_education || profile.education?.highestLevel || "Master's Degree";
   if (document.getElementById('profExpYears')) document.getElementById('profExpYears').value = s.default_experience_years || 5;
+  if (document.getElementById('profBilingualSpanish')) document.getElementById('profBilingualSpanish').value = s.bilingual_spanish || 'No';
+  if (document.getElementById('profExcelExp')) document.getElementById('profExcelExp').value = skillsExp['microsoft excel'] || 5;
+  if (document.getElementById('profFishbowlExp')) document.getElementById('profFishbowlExp').value = skillsExp['fishbowl'] || 3;
+  if (document.getElementById('profTraceabilityExp')) document.getElementById('profTraceabilityExp').value = skillsExp['traceability'] || 5;
+  if (document.getElementById('profErpExp')) document.getElementById('profErpExp').value = skillsExp['erp'] || skillsExp['sap'] || 5;
 
   renderLearnedQuestions(profile.customAnswers || {});
 }
@@ -842,6 +848,8 @@ function bindEvents() {
         relocate: document.getElementById('profRelocate') ? document.getElementById('profRelocate').value : 'Yes',
         commute_ok: document.getElementById('profCommute') ? document.getElementById('profCommute').value : 'Yes',
         highest_education: document.getElementById('profEducation') ? document.getElementById('profEducation').value : "Master's Degree",
+        bilingual_spanish: document.getElementById('profBilingualSpanish') ? document.getElementById('profBilingualSpanish').value : 'No',
+        spanish: document.getElementById('profBilingualSpanish') ? document.getElementById('profBilingualSpanish').value : 'No',
         default_experience_years: parseInt(document.getElementById('profExpYears')?.value, 10) || 5,
         notice_period: document.getElementById('profNoticePeriod') ? document.getElementById('profNoticePeriod').value : '2 weeks',
         sponsorship: document.getElementById('profSponsorship').value === 'true' ? 'Yes' : 'No',
@@ -849,6 +857,14 @@ function bindEvents() {
         background_check: document.getElementById('profBackground').value === 'true' ? 'Yes' : 'No',
         drug_test: document.getElementById('profDrugTest').value === 'true' ? 'Yes' : 'No',
         drivers_license: document.getElementById('profDriversLic').value === 'true' ? 'Yes' : 'No'
+      },
+      skillsYearsOfExperience: {
+        ...(currentProfile?.skillsYearsOfExperience || {}),
+        'microsoft excel': parseInt(document.getElementById('profExcelExp')?.value, 10) || 5,
+        'fishbowl': parseInt(document.getElementById('profFishbowlExp')?.value, 10) || 3,
+        'traceability': parseInt(document.getElementById('profTraceabilityExp')?.value, 10) || 5,
+        'erp': parseInt(document.getElementById('profErpExp')?.value, 10) || 5,
+        'sap': parseInt(document.getElementById('profErpExp')?.value, 10) || 5
       },
       coverLetter: document.getElementById('profCoverLetter').value
     };

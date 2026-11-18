@@ -18,6 +18,15 @@ export class IndeedProvider extends BaseJobProvider {
     const seenJks = new Set();
 
     for (let pNum = 0; pNum < maxPages; pNum++) {
+      if (options.isCancelled && options.isCancelled()) {
+        this.log('🛑 Search aborted by user stop signal.');
+        break;
+      }
+      while (options.isPaused && options.isPaused()) {
+        if (options.isCancelled && options.isCancelled()) break;
+        await this.browserManager.delay(500);
+      }
+
       const start = pNum * 10;
       const searchUrl = `https://www.indeed.com/jobs?q=${encodedQ}&l=${encodedL}&fromage=${fromage}${start > 0 ? `&start=${start}` : ''}`;
 
@@ -478,19 +487,27 @@ export class IndeedProvider extends BaseJobProvider {
 
           if (prompt) {
             const textarea = container.querySelector('textarea');
-            const numInput = container.querySelector('input[type="number"]');
+            const numInput = container.querySelector('input[type="number"], input[inputmode="numeric"]');
             const textInput = container.querySelector('input[type="text"], input:not([type])');
             const radios = container.querySelectorAll('input[type="radio"]');
             const select = container.querySelector('select');
-
             const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+
+            const pLower = prompt.toLowerCase();
+            const containerText = container.innerText.toLowerCase();
+            const isNumericPrompt =
+              pLower.includes('how many years') ||
+              pLower.includes('years of experience') ||
+              pLower.includes('years experience') ||
+              pLower.includes('number of years') ||
+              pLower.includes('how many') ||
+              containerText.includes('valid number') ||
+              containerText.includes('no decimals');
 
             let type = 'unknown';
             let options = [];
 
-            if (textarea) {
-              type = 'textarea';
-            } else if (radios.length > 0) {
+            if (radios.length > 0) {
               type = 'radio';
               radios.forEach(r => {
                 const label = container.querySelector(`label[for="${r.id}"]`) || r.closest('label');
@@ -509,8 +526,10 @@ export class IndeedProvider extends BaseJobProvider {
               select.querySelectorAll('option').forEach(opt => {
                 if (opt.value) options.push({ value: opt.value, text: opt.innerText.trim() });
               });
-            } else if (numInput) {
+            } else if (isNumericPrompt || numInput) {
               type = 'number';
+            } else if (textarea) {
+              type = 'textarea';
             } else if (textInput) {
               type = 'text';
             }
@@ -573,14 +592,20 @@ export class IndeedProvider extends BaseJobProvider {
 
           // 1. Textarea
           const textarea = container.querySelector('textarea');
-          if (textarea && !textarea.value) {
-            textarea.focus();
-            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-            if (setter) setter.call(textarea, answer);
-            else textarea.value = answer;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+          if (textarea) {
+            const pText = prompt.toLowerCase();
+            const isBilingual = pText.includes('bilingual') || pText.includes('spanish');
+            const shouldFill = !textarea.value || (isBilingual && textarea.value.toLowerCase().startsWith('yes'));
+            if (shouldFill) {
+              textarea.focus();
+              const val = isBilingual ? 'No' : answer;
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+              if (setter) setter.call(textarea, val);
+              else textarea.value = val;
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              textarea.dispatchEvent(new Event('change', { bubbles: true }));
+              textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+            }
             return;
           }
 
@@ -671,16 +696,37 @@ export class IndeedProvider extends BaseJobProvider {
             return;
           }
 
-          // 5. Text / Number Input
+          // 5. Text / Number Input (Always guarantees numbers for experience queries)
           const input = container.querySelector('input[type="text"], input[type="number"], input:not([type])');
-          if (input && !input.value) {
-            input.focus();
-            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-            if (setter) setter.call(input, answer);
-            else input.value = answer;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            input.dispatchEvent(new Event('blur', { bubbles: true }));
+          if (input) {
+            const containerText = container.innerText.toLowerCase();
+            const pText = prompt.toLowerCase();
+            const isNumeric =
+              pText.includes('how many years') ||
+              pText.includes('years of experience') ||
+              pText.includes('number of years') ||
+              pText.includes('years experience') ||
+              pText.includes('how many') ||
+              input.type === 'number' ||
+              containerText.includes('valid number') ||
+              containerText.includes('no decimals');
+
+            let finalVal = answer;
+            if (isNumeric) {
+              const numMatch = (answer || '').match(/\d+/);
+              finalVal = numMatch ? numMatch[0] : '5';
+            }
+
+            const hasInvalidText = isNumeric && (!/^\d+$/.test((input.value || '').trim()));
+            if (!input.value || hasInvalidText) {
+              input.focus();
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+              if (setter) setter.call(input, finalVal);
+              else input.value = finalVal;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              input.dispatchEvent(new Event('blur', { bubbles: true }));
+            }
             return;
           }
         });
@@ -1012,14 +1058,35 @@ export class IndeedProvider extends BaseJobProvider {
       }).catch(() => false);
 
       if (hasValidationError) {
-        this.log('⚠️ Required field prompt detected. Copilot auto-resolving missing input...', 'warning');
+        this.log('⚠️ Required field or validation prompt detected. Copilot auto-resolving input...', 'warning');
         await ctx.evaluate(() => {
-          const invalidInputs = document.querySelectorAll('[aria-invalid="true"], input:required:invalid');
-          invalidInputs.forEach(inp => {
-            if (inp.type === 'number') inp.value = '5';
-            else if (inp.type === 'text' && !inp.value) inp.value = '5';
+          const invalidElements = Array.from(document.querySelectorAll('[aria-invalid="true"], input:required:invalid, .ia-Feedback-error, [role="alert"]'));
+          invalidElements.forEach(el => {
+            const container = el.closest('fieldset, .ia-Questions-item, [data-testid*="question"]') || el.parentElement;
+            const containerText = (container ? container.innerText : '').toLowerCase();
+            const inp = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? el : el.querySelector('input, textarea');
+            if (!inp) return;
+
+            const isNumeric = containerText.includes('number') || containerText.includes('decimals') || containerText.includes('years') || inp.type === 'number';
+            const isBilingual = containerText.includes('bilingual') || containerText.includes('spanish');
+
+            let resolvedVal = '5';
+            if (isNumeric) resolvedVal = '5';
+            else if (isBilingual) resolvedVal = 'No';
+            else if (!inp.value || inp.value.length > 30) resolvedVal = 'Yes';
+            else resolvedVal = inp.value;
+
+            const setter = Object.getOwnPropertyDescriptor(
+              inp.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+              'value'
+            )?.set;
+
+            if (setter) setter.call(inp, resolvedVal);
+            else inp.value = resolvedVal;
+
             inp.dispatchEvent(new Event('input', { bubbles: true }));
             inp.dispatchEvent(new Event('change', { bubbles: true }));
+            inp.dispatchEvent(new Event('blur', { bubbles: true }));
           });
         }).catch(() => {});
         await this.browserManager.delay(1000);
