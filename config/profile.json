@@ -132,7 +132,7 @@
     "commute_ok": "Yes",
     "relocate": "Yes",
     "drivers_license": "Yes",
-    "automotive_parts": "No",
+    "automotive_parts": "Yes",
     "overtime_daily": "Yes",
     "highest_education": "Master's Degree",
     "notice_period": "2 weeks",

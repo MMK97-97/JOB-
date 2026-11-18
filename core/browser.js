@@ -63,37 +63,60 @@ export class BrowserManager {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
       );
 
+      // Helper to attach safe dialog handler
+      const attachSafeDialogHandler = (targetPage) => {
+        targetPage.on('dialog', async dialog => {
+          try {
+            const type = dialog.type();
+            console.log(`[BROWSER DIALOG] Modal intercepted: ${type} "${dialog.message()}"`);
+            if (type === 'beforeunload') {
+              // Crucial: Dismiss beforeunload to STAY on the application page!
+              // Calling accept() instructs Chrome to discard and leave the application form.
+              await dialog.dismiss();
+            } else {
+              await dialog.accept();
+            }
+          } catch (e) {}
+        });
+      };
+
       // Clean webdriver flags and auto-kill beforeunload popups ("Leave site? Changes you made may not be saved")
       await this.activePage.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         window.navigator.chrome = { runtime: {} };
-        window.onbeforeunload = null;
-        window.addEventListener('beforeunload', (e) => {
-          e.stopImmediatePropagation();
-        }, true);
-      });
-
-      // Auto-accept any browser dialogs so navigations never hang or prompt modal
-      this.activePage.on('dialog', async dialog => {
         try {
-          console.log(`[BROWSER DIALOG] Auto-handling modal: ${dialog.type()} "${dialog.message()}"`);
-          await dialog.accept();
+          Object.defineProperty(window, 'onbeforeunload', {
+            get: () => null,
+            set: () => {}
+          });
+          const originalAEL = EventTarget.prototype.addEventListener;
+          EventTarget.prototype.addEventListener = function(type, listener, options) {
+            if (type === 'beforeunload' || type === 'unload') return;
+            return originalAEL.apply(this, arguments);
+          };
         } catch (e) {}
       });
+
+      attachSafeDialogHandler(this.activePage);
 
       // Listen for popup tabs/windows and attach handlers immediately
       this.browser.on('targetcreated', async target => {
         try {
           const p = await target.page();
           if (p) {
-            p.on('dialog', async dialog => {
-              try { await dialog.accept(); } catch (e) {}
-            });
+            attachSafeDialogHandler(p);
             await p.evaluateOnNewDocument(() => {
-              window.onbeforeunload = null;
-              window.addEventListener('beforeunload', (e) => {
-                e.stopImmediatePropagation();
-              }, true);
+              try {
+                Object.defineProperty(window, 'onbeforeunload', {
+                  get: () => null,
+                  set: () => {}
+                });
+                const originalAEL = EventTarget.prototype.addEventListener;
+                EventTarget.prototype.addEventListener = function(type, listener, options) {
+                  if (type === 'beforeunload' || type === 'unload') return;
+                  return originalAEL.apply(this, arguments);
+                };
+              } catch (e) {}
             }).catch(() => {});
           }
         } catch (e) {}
@@ -112,19 +135,24 @@ export class BrowserManager {
       const pages = await this.browser.pages();
       this.activePage = pages.length > 0 ? pages[0] : await this.browser.newPage();
 
-      // Auto-accept any browser dialogs (e.g., "Leave site?") so navigations never hang
-      this.activePage.on('dialog', async dialog => {
-        try { await dialog.accept(); } catch (e) {}
-      });
+      const attachSafeDialog = (p) => {
+        p.on('dialog', async dialog => {
+          try {
+            if (dialog.type() === 'beforeunload') {
+              await dialog.dismiss();
+            } else {
+              await dialog.accept();
+            }
+          } catch (e) {}
+        });
+      };
+
+      attachSafeDialog(this.activePage);
 
       this.browser.on('targetcreated', async target => {
         try {
           const p = await target.page();
-          if (p) {
-            p.on('dialog', async dialog => {
-              try { await dialog.accept(); } catch (e) {}
-            });
-          }
+          if (p) attachSafeDialog(p);
         } catch (e) {}
       });
 
@@ -146,7 +174,16 @@ export class BrowserManager {
       const page = this._resolvePage(pageOrFrame);
       if (page && !page.isClosed()) {
         await page.evaluate(() => {
-          window.onbeforeunload = null;
+          try {
+            window.onbeforeunload = null;
+            if (window.EventTarget && window.EventTarget.prototype) {
+              const originalAEL = window.EventTarget.prototype.addEventListener;
+              window.EventTarget.prototype.addEventListener = function(type, listener, options) {
+                if (type === 'beforeunload' || type === 'unload') return;
+                return originalAEL.apply(this, arguments);
+              };
+            }
+          } catch (e) {}
         }).catch(() => {});
       }
     } catch (e) {}
@@ -157,7 +194,10 @@ export class BrowserManager {
     if (!this.activePage || this.activePage.isClosed()) {
       this.activePage = await this.browser.newPage();
       this.activePage.on('dialog', async dialog => {
-        try { await dialog.accept(); } catch (e) {}
+        try {
+          if (dialog.type() === 'beforeunload') await dialog.dismiss();
+          else await dialog.accept();
+        } catch (e) {}
       });
     }
     return this.activePage;

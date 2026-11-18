@@ -421,9 +421,10 @@ export class IndeedProvider extends BaseJobProvider {
 
       if (hasExistingResume) {
         this.log('🤖 Confirmed active candidate ATS resume');
+        return; // Retain active ATS resume without triggering unnecessary dirty upload
       }
 
-      // 2. If file input is present
+      // 2. Only upload file if no existing resume is selected
       if (resumePath) {
         const fileInputs = await ctx.$$('input[type="file"]');
         for (const input of fileInputs) {
@@ -456,6 +457,8 @@ export class IndeedProvider extends BaseJobProvider {
             const radios = container.querySelectorAll('input[type="radio"]');
             const select = container.querySelector('select');
 
+            const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+
             let type = 'unknown';
             let options = [];
 
@@ -467,6 +470,13 @@ export class IndeedProvider extends BaseJobProvider {
                 const label = container.querySelector(`label[for="${r.id}"]`) || r.closest('label');
                 const text = label ? label.innerText.trim() : r.value;
                 if (text) options.push({ id: r.id, value: r.value, text });
+              });
+            } else if (checkboxes.length > 0) {
+              type = 'checkbox';
+              checkboxes.forEach(c => {
+                const label = container.querySelector(`label[for="${c.id}"]`) || c.closest('label');
+                const text = label ? label.innerText.trim() : c.value;
+                if (text) options.push({ id: c.id, value: c.value, text });
               });
             } else if (select) {
               type = 'select';
@@ -608,7 +618,34 @@ export class IndeedProvider extends BaseJobProvider {
             return;
           }
 
-          // 4. Text / Number Input
+          // 4. Checkboxes (Acknowledgements, Agreements, Skills)
+          const checkboxes = Array.from(container.querySelectorAll('input[type="checkbox"]'));
+          if (checkboxes.length > 0) {
+            checkboxes.forEach(cb => {
+              const labelEl = container.querySelector(`label[for="${cb.id}"]`) || cb.closest('label');
+              const text = (labelEl ? labelEl.innerText : '').trim().toLowerCase();
+              const shouldCheck =
+                answer.toLowerCase() === 'yes' ||
+                answer.toLowerCase() === 'true' ||
+                text.includes('agree') ||
+                text.includes('certif') ||
+                text.includes('consent') ||
+                text.includes('understand') ||
+                text.includes('authorize') ||
+                text.includes('affirm') ||
+                text.includes(answer.toLowerCase());
+
+              if (shouldCheck && !cb.checked) {
+                cb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                cb.click();
+                cb.dispatchEvent(new Event('input', { bubbles: true }));
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            });
+            return;
+          }
+
+          // 5. Text / Number Input
           const input = container.querySelector('input[type="text"], input[type="number"], input:not([type])');
           if (input && !input.value) {
             input.focus();
@@ -885,6 +922,14 @@ export class IndeedProvider extends BaseJobProvider {
             t.includes('different resume')
           ) {
             return false;
+          }
+
+          // If it is an anchor link, ignore navigation links to privacy, settings, or external sites
+          if (b.tagName === 'A') {
+            const href = (b.getAttribute('href') || '').toLowerCase();
+            if (href.startsWith('http') || href.includes('privacy') || href.includes('contact') || href.includes('help') || href.includes('settings')) {
+              return false;
+            }
           }
 
           // Check common continue / next / review identifiers
