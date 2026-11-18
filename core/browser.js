@@ -81,14 +81,43 @@ export class BrowserManager {
       });
       const pages = await this.browser.pages();
       this.activePage = pages.length > 0 ? pages[0] : await this.browser.newPage();
+
+      // Auto-accept any browser dialogs (e.g., "Leave site?") so navigations never hang
+      this.activePage.on('dialog', async dialog => {
+        try { await dialog.accept(); } catch (e) {}
+      });
+
+      this.browser.on('targetcreated', async target => {
+        try {
+          const p = await target.page();
+          if (p) {
+            p.on('dialog', async dialog => {
+              try { await dialog.accept(); } catch (e) {}
+            });
+          }
+        } catch (e) {}
+      });
+
       return this.browser;
     }
+  }
+
+  _resolvePage(pageOrFrame) {
+    const raw = pageOrFrame || this.activePage;
+    if (!raw) return null;
+    if (typeof raw.page === 'function') {
+      return raw.page(); // Frame -> Page
+    }
+    return raw;
   }
 
   async getPage() {
     if (!this.browser) await this.launch();
     if (!this.activePage || this.activePage.isClosed()) {
       this.activePage = await this.browser.newPage();
+      this.activePage.on('dialog', async dialog => {
+        try { await dialog.accept(); } catch (e) {}
+      });
     }
     return this.activePage;
   }
@@ -105,79 +134,125 @@ export class BrowserManager {
    * Human-like smooth mouse movement with curved trajectory
    */
   async humanMouseMove(targetX, targetY, page = null) {
-    const targetPage = page || this.activePage;
-    // Current mouse position estimate
-    const steps = Math.floor(Math.random() * 8) + 12;
-    for (let i = 1; i <= steps; i++) {
-      const progress = i / steps;
-      // Curved easing with random micro-deviations
-      const jitterX = (Math.random() - 0.5) * 4;
-      const jitterY = (Math.random() - 0.5) * 4;
-      await targetPage.mouse.move(targetX + jitterX, targetY + jitterY);
-      await this.delay(Math.floor(Math.random() * 15) + 10);
-    }
+    const targetPage = this._resolvePage(page);
+    if (!targetPage || !targetPage.mouse) return;
+    try {
+      const steps = Math.floor(Math.random() * 8) + 12;
+      for (let i = 1; i <= steps; i++) {
+        const jitterX = (Math.random() - 0.5) * 4;
+        const jitterY = (Math.random() - 0.5) * 4;
+        await targetPage.mouse.move(targetX + jitterX, targetY + jitterY).catch(() => {});
+        await this.delay(Math.floor(Math.random() * 15) + 10);
+      }
+    } catch (e) {}
   }
 
   /**
    * Human-like natural smooth scrolling
    */
   async humanScroll(amount = 400, page = null) {
-    const targetPage = page || this.activePage;
-    const slices = Math.floor(Math.random() * 4) + 5;
-    const sliceDelta = amount / slices;
-    for (let i = 0; i < slices; i++) {
-      await targetPage.evaluate((d) => window.scrollBy({ top: d, behavior: 'smooth' }), sliceDelta);
-      await this.delay(Math.floor(Math.random() * 120) + 100);
-    }
+    const target = page || this.activePage;
+    if (!target) return;
+    try {
+      const slices = Math.floor(Math.random() * 4) + 5;
+      const sliceDelta = amount / slices;
+      for (let i = 0; i < slices; i++) {
+        await target.evaluate((d) => window.scrollBy({ top: d, behavior: 'smooth' }), sliceDelta).catch(() => {});
+        await this.delay(Math.floor(Math.random() * 120) + 100);
+      }
+    } catch (e) {}
   }
 
   /**
    * Human-like typing with variable cadence and natural pauses
    */
   async humanType(selectorOrEl, text, page = null) {
-    const targetPage = page || this.activePage;
-    let element = typeof selectorOrEl === 'string' ? await targetPage.$(selectorOrEl) : selectorOrEl;
+    const targetPage = this._resolvePage(page);
+    const ctx = page || this.activePage;
+    let element = typeof selectorOrEl === 'string' ? await ctx.$(selectorOrEl) : selectorOrEl;
     if (!element) return;
 
-    await element.scrollIntoViewIfNeeded().catch(() => {});
-    const box = await element.boundingBox();
-    if (box) {
-      await this.humanMouseMove(box.x + box.width / 2, box.y + box.height / 2, targetPage);
+    try {
+      await element.scrollIntoViewIfNeeded().catch(() => {});
+      const box = await element.boundingBox().catch(() => null);
+      if (box && targetPage && targetPage.mouse) {
+        await this.humanMouseMove(box.x + box.width / 2, box.y + box.height / 2, targetPage).catch(() => {});
+      }
+    } catch (e) {}
+
+    let typed = false;
+    try {
+      await element.focus().catch(() => {});
+      await element.click({ clickCount: 3 }).catch(() => {});
+      if (targetPage && targetPage.keyboard) {
+        await targetPage.keyboard.press('Backspace').catch(() => {});
+      }
+      await this.delay(100);
+
+      if (targetPage && targetPage.keyboard) {
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          let delay = Math.floor(Math.random() * 45) + 25;
+          if (char === ' ' || char === ',' || char === '.') delay += 100;
+          await targetPage.keyboard.type(char, { delay }).catch(() => {});
+        }
+        typed = true;
+      }
+    } catch (err) {}
+
+    // Fallback: direct DOM value set with standard events
+    if (!typed) {
+      try {
+        await element.evaluate((el, val) => {
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, text).catch(() => {});
+      } catch (e) {}
     }
 
-    await element.click({ clickCount: 3 }).catch(() => {});
-    await targetPage.keyboard.press('Backspace');
-    await this.delay(100);
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      // Random typing cadence
-      let delay = Math.floor(Math.random() * 55) + 35;
-      if (char === ' ' || char === ',' || char === '.') delay += 120; // natural punctuation pause
-      await targetPage.keyboard.type(char, { delay });
-    }
     await this.delay(Math.floor(Math.random() * 200) + 150);
   }
 
   /**
-   * Human-like click with natural hover and trajectory
+   * Human-like click with natural hover, trajectory, and DOM fallback
    */
   async humanClick(selectorOrEl, page = null) {
-    const targetPage = page || this.activePage;
-    let element = typeof selectorOrEl === 'string' ? await targetPage.$(selectorOrEl) : selectorOrEl;
-    if (!element) return;
+    const targetPage = this._resolvePage(page);
+    const ctx = page || this.activePage;
+    let element = typeof selectorOrEl === 'string' ? await ctx.$(selectorOrEl) : selectorOrEl;
+    if (!element) return false;
 
-    await element.scrollIntoViewIfNeeded().catch(() => {});
-    const box = await element.boundingBox();
-    if (box) {
-      // Natural slight offset from center
-      const offsetX = box.x + box.width * (0.35 + Math.random() * 0.3);
-      const offsetY = box.y + box.height * (0.35 + Math.random() * 0.3);
-      await this.humanMouseMove(offsetX, offsetY, targetPage);
-      await this.delay(Math.floor(Math.random() * 150) + 100); // hover pause
+    try {
+      await element.scrollIntoViewIfNeeded().catch(() => {});
+      const box = await element.boundingBox().catch(() => null);
+      if (box && targetPage && targetPage.mouse) {
+        const offsetX = box.x + box.width * (0.35 + Math.random() * 0.3);
+        const offsetY = box.y + box.height * (0.35 + Math.random() * 0.3);
+        await this.humanMouseMove(offsetX, offsetY, targetPage).catch(() => {});
+        await this.delay(Math.floor(Math.random() * 120) + 80);
+      }
+    } catch (e) {}
+
+    let clicked = false;
+    try {
+      await element.click();
+      clicked = true;
+    } catch (clickErr) {
+      // DOM direct click fallback - handles iframes, obscured elements, animations
+      try {
+        await element.evaluate(el => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.focus();
+          el.click();
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        });
+        clicked = true;
+      } catch (evalErr) {}
     }
-    await element.click();
-    await this.delay(Math.floor(Math.random() * 300) + 200);
+
+    await this.delay(Math.floor(Math.random() * 250) + 150);
+    return clicked;
   }
 
   async humanPause(min = 1200, max = 2600) {

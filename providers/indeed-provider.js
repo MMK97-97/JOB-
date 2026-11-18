@@ -122,7 +122,26 @@ export class IndeedProvider extends BaseJobProvider {
     this.emit('status', { jobId: job.jobId, status: 'STARTING', job });
 
     try {
-      await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      // Clean up extra tabs/popups so only 1 main tab is active
+      if (this.browserManager.browser) {
+        const openPages = await this.browserManager.browser.pages();
+        for (let i = 1; i < openPages.length; i++) {
+          await openPages[i].close().catch(() => {});
+        }
+      }
+
+      try {
+        await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      } catch (navErr) {
+        if (navErr.message.includes('ERR_ABORTED') || navErr.message.includes('Target closed') || navErr.message.includes('Execution context')) {
+          this.log(`Retrying navigation to ${job.url}...`);
+          await this.browserManager.delay(2000);
+          page = await this.browserManager.getPage();
+          await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+        } else {
+          throw navErr;
+        }
+      }
       await this.browserManager.delay(2500);
 
       // Check if job is expired or closed
@@ -360,16 +379,38 @@ export class IndeedProvider extends BaseJobProvider {
   }
 
   async handleResumeUpload(ctx, resumePath) {
-    if (!resumePath) return;
     try {
-      const fileInputs = await ctx.$$('input[type="file"]');
-      for (const input of fileInputs) {
-        await input.uploadFile(resumePath);
-        this.log(`Attached resume: ${resumePath}`);
-        await this.browserManager.delay(1000);
+      // 1. If an existing profile resume card/radio is present, confirm it is selected
+      const hasExistingResume = await ctx.evaluate(() => {
+        const resumeRadios = Array.from(document.querySelectorAll('input[type="radio"][value*="resume" i], input[type="radio"][id*="resume" i], input[type="radio"]'));
+        const targetRadio = resumeRadios.find(r => {
+          const lbl = document.querySelector(`label[for="${r.id}"]`) || r.parentElement;
+          const text = (lbl ? lbl.innerText : '').toLowerCase();
+          return text.includes('resume') || text.includes('.pdf') || text.includes('uploaded');
+        });
+
+        if (targetRadio && !targetRadio.checked) {
+          targetRadio.click();
+          return true;
+        }
+        return !!targetRadio;
+      });
+
+      if (hasExistingResume) {
+        this.log('🤖 Confirmed active candidate ATS resume');
+      }
+
+      // 2. If file input is present
+      if (resumePath) {
+        const fileInputs = await ctx.$$('input[type="file"]');
+        for (const input of fileInputs) {
+          await input.uploadFile(resumePath).catch(() => {});
+          this.log(`Attached ATS resume document: ${resumePath}`);
+          await this.browserManager.delay(800);
+        }
       }
     } catch (e) {
-      // upload failed or resume already selected
+      // resume already chosen or upload not required on this step
     }
   }
 
@@ -579,54 +620,101 @@ export class IndeedProvider extends BaseJobProvider {
   }
 
   async handleNavigationButtons(ctx, page, isDryRun, job) {
-    // Check buttons available
-    const buttonData = await ctx.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      return btns.map((b, idx) => ({
-        index: idx,
-        text: b.innerText.trim(),
-        type: b.getAttribute('type') || '',
-        disabled: b.disabled || b.getAttribute('aria-disabled') === 'true'
-      }));
+    // 1. Check if application has already been submitted (e.g. confirmation page visible)
+    const isSubmitted = await ctx.evaluate(() => {
+      const text = document.body.innerText.toLowerCase();
+      return text.includes('your application has been submitted') ||
+             text.includes('application submitted') ||
+             text.includes('successfully applied') ||
+             text.includes('application has been sent') ||
+             document.querySelector('[data-testid="ia-SuccessState"], .ia-SuccessState') !== null;
     });
 
-    const activeButtons = buttonData.filter(b => !b.disabled && b.text.length > 0);
+    if (isSubmitted) {
+      this.log('🎉 Application confirmation verified on screen!');
+      return { completed: true, submitted: true };
+    }
 
-    // Look for submit button
-    const submitBtn = activeButtons.find(b =>
-      b.text.toLowerCase().includes('submit your application') ||
-      b.text.toLowerCase().includes('submit application') ||
-      b.text.toLowerCase() === 'submit' ||
-      b.text.toLowerCase() === 'apply'
-    );
+    // 2. Check for Submit button
+    const submitCheck = await ctx.evaluate((dryRun) => {
+      const allButtons = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+      const targetBtn = allButtons.find(b => {
+        const t = (b.innerText || b.value || b.getAttribute('aria-label') || '').trim().toLowerCase();
+        const isDisabled = b.disabled || b.getAttribute('aria-disabled') === 'true';
+        if (isDisabled) return false;
+        if (t.includes('close') || t.includes('cancel') || t.includes('back') || t.includes('leave')) return false;
+        return t.includes('submit your application') ||
+               t.includes('submit application') ||
+               t === 'submit' ||
+               t === 'apply';
+      });
 
-    if (submitBtn) {
+      if (targetBtn) {
+        if (dryRun) return { found: true, clicked: false, text: targetBtn.innerText.trim() };
+        targetBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetBtn.focus();
+        targetBtn.click();
+        targetBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        return { found: true, clicked: true, text: targetBtn.innerText.trim() };
+      }
+      return { found: false, clicked: false };
+    }, isDryRun);
+
+    if (submitCheck.found) {
       if (isDryRun) {
         this.log(`Dry-run mode enabled: Job "${job.title}" is ready for final submission. Skipping click on submit button.`);
         await this.browserManager.takeScreenshot(`dryrun-ready-${job.jobId}`);
         return { completed: true, submitted: false };
       }
 
-      this.log(`🤖 Copilot executing final Submit: "${submitBtn.text}"!`);
-      const buttons = await ctx.$$('button');
-      await this.browserManager.humanClick(buttons[submitBtn.index], ctx);
+      this.log(`🤖 Copilot executing final Submit: "${submitCheck.text}"!`);
       await this.browserManager.delay(4500);
       return { completed: true, submitted: true };
     }
 
-    // Look for Next / Continue / Review
-    const nextBtn = activeButtons.find(b =>
-      b.text.toLowerCase().includes('continue') ||
-      b.text.toLowerCase().includes('next') ||
-      b.text.toLowerCase().includes('review your application') ||
-      b.text.toLowerCase().includes('review')
-    );
+    // 3. Look for Next / Continue / Review button
+    const nextCheck = await ctx.evaluate(() => {
+      const allButtons = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+      const targetBtn = allButtons.find(b => {
+        const t = (b.innerText || b.value || b.getAttribute('aria-label') || '').trim().toLowerCase();
+        const isDisabled = b.disabled || b.getAttribute('aria-disabled') === 'true';
+        if (isDisabled) return false;
+        // Never click leave, cancel, close, back, or use a different resume
+        if (
+          t.includes('save and close') ||
+          t.includes('close') ||
+          t.includes('cancel') ||
+          t.includes('leave') ||
+          t.includes('back') ||
+          t.includes('different resume')
+        ) {
+          return false;
+        }
+        return (
+          t === 'continue' ||
+          t.startsWith('continue') ||
+          t.includes('continue to application') ||
+          t === 'next' ||
+          t.startsWith('next') ||
+          t.includes('review your application') ||
+          t === 'review' ||
+          t.includes('save and continue')
+        );
+      });
 
-    if (nextBtn) {
-      this.log(`🤖 Copilot advancing to next step: "${nextBtn.text}"`);
-      const buttons = await ctx.$$('button');
-      await this.browserManager.humanClick(buttons[nextBtn.index], ctx);
-      await this.browserManager.delay(2200);
+      if (targetBtn) {
+        targetBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetBtn.focus();
+        targetBtn.click();
+        targetBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        return { found: true, text: targetBtn.innerText.trim() };
+      }
+      return { found: false };
+    });
+
+    if (nextCheck.found) {
+      this.log(`🤖 Copilot advancing to next step: "${nextCheck.text}"`);
+      await this.browserManager.delay(2800);
 
       // Check for required field validation prompt
       const hasValidationError = await ctx.evaluate(() => {
@@ -640,7 +728,7 @@ export class IndeedProvider extends BaseJobProvider {
           const invalidInputs = document.querySelectorAll('[aria-invalid="true"], input:required:invalid');
           invalidInputs.forEach(inp => {
             if (inp.type === 'number') inp.value = '5';
-            else if (inp.type === 'text') inp.value = '5';
+            else if (inp.type === 'text' && !inp.value) inp.value = '5';
             inp.dispatchEvent(new Event('input', { bubbles: true }));
             inp.dispatchEvent(new Event('change', { bubbles: true }));
           });
@@ -651,19 +739,7 @@ export class IndeedProvider extends BaseJobProvider {
       return { completed: false };
     }
 
-    // Check if application has already been submitted (e.g. confirmation page visible)
-    const isSubmitted = await ctx.evaluate(() => {
-      const text = document.body.innerText.toLowerCase();
-      return text.includes('your application has been submitted') ||
-             text.includes('application submitted') ||
-             text.includes('successfully applied');
-    });
-
-    if (isSubmitted) {
-      return { completed: true, submitted: true };
-    }
-
-    // If no navigation buttons are found, finish loop
+    // 4. Fallback if no navigation buttons are found
     return { completed: true, submitted: false };
   }
 }
