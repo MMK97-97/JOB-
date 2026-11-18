@@ -577,7 +577,94 @@ export class IndeedProvider extends BaseJobProvider {
         }
       }
 
-      // Apply each answer directly to its specific container in the page DOM
+      // 1. Natural sequential human interaction across questions
+      for (const q of rawQuestions) {
+        if (options.isCancelled && options.isCancelled()) break;
+        while (options.isPaused && options.isPaused()) {
+          if (options.isCancelled && options.isCancelled()) break;
+          await this.browserManager.delay(500);
+        }
+
+        const answer = answersMap[q.prompt];
+        if (!answer) continue;
+
+        const isNumeric =
+          q.type === 'number' ||
+          q.prompt.toLowerCase().includes('how many years') ||
+          q.prompt.toLowerCase().includes('years of experience') ||
+          q.prompt.toLowerCase().includes('years experience') ||
+          q.prompt.toLowerCase().includes('number of years') ||
+          q.prompt.toLowerCase().includes('how many');
+
+        let finalVal = answer;
+        if (isNumeric) {
+          const numMatch = (answer || '').match(/\d+/);
+          finalVal = numMatch ? numMatch[0] : '5';
+        }
+
+        try {
+          if (q.type === 'text' || q.type === 'number') {
+            const inputHandle = await ctx.evaluateHandle((idx) => {
+              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const c = items[idx];
+              return c ? c.querySelector('input[type="text"], input[type="number"], input:not([type])') : null;
+            }, q.index).catch(() => null);
+
+            if (inputHandle && inputHandle.asElement()) {
+              await this.browserManager.humanType(inputHandle.asElement(), finalVal, ctx);
+            }
+          } else if (q.type === 'textarea') {
+            const isBilingual = q.prompt.toLowerCase().includes('bilingual') || q.prompt.toLowerCase().includes('spanish');
+            const val = isBilingual ? 'No' : answer;
+            const taHandle = await ctx.evaluateHandle((idx) => {
+              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const c = items[idx];
+              return c ? c.querySelector('textarea') : null;
+            }, q.index).catch(() => null);
+
+            if (taHandle && taHandle.asElement()) {
+              await this.browserManager.humanType(taHandle.asElement(), val, ctx);
+            }
+          } else if (q.type === 'radio') {
+            const radioHandle = await ctx.evaluateHandle((idx, ans) => {
+              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const c = items[idx];
+              if (!c) return null;
+              const radios = Array.from(c.querySelectorAll('input[type="radio"]'));
+              const wantYes = ans.toLowerCase() === 'yes';
+              const wantNo = ans.toLowerCase() === 'no';
+              for (const r of radios) {
+                const labelEl = c.querySelector(`label[for="${r.id}"]`) || r.closest('label');
+                const text = (labelEl ? labelEl.innerText : '').trim().toLowerCase();
+                const val = (r.value || '').trim().toLowerCase();
+                if (wantYes && (text === 'yes' || text.startsWith('yes') || val === 'yes' || val === '1' || val === 'true')) return labelEl || r;
+                if (wantNo && (text === 'no' || text.startsWith('no') || val === 'no' || val === '0' || val === 'false')) return labelEl || r;
+                if (text.includes(ans.toLowerCase()) || val.includes(ans.toLowerCase())) return labelEl || r;
+              }
+              return null;
+            }, q.index, answer).catch(() => null);
+
+            if (radioHandle && radioHandle.asElement()) {
+              await this.browserManager.humanClick(radioHandle.asElement(), ctx);
+            }
+          } else if (q.type === 'checkbox') {
+            const cbHandle = await ctx.evaluateHandle((idx) => {
+              const items = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+              const c = items[idx];
+              return c ? c.querySelector('input[type="checkbox"]') : null;
+            }, q.index).catch(() => null);
+
+            if (cbHandle && cbHandle.asElement()) {
+              await this.browserManager.humanClick(cbHandle.asElement(), ctx);
+            }
+          }
+        } catch (e) {}
+
+        // Natural pause between questions
+        await this.browserManager.delay(Math.floor(Math.random() * 220) + 160);
+      }
+
+      // 2. Fail-safe fast DOM synchronization pass (guarantees React state & handles corner cases)
       await ctx.evaluate((answers) => {
         const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
         const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
@@ -945,24 +1032,42 @@ export class IndeedProvider extends BaseJobProvider {
         }
       }
 
-      // Submit button is enabled: Execute submit
-      const clickSuccess = await ctx.evaluate(() => {
+      // Natural human review pause before final submission
+      this.log('Candidate reviewing final application summary before submitting...');
+      await this.browserManager.humanSkim(ctx, 2200);
+
+      // Submit button is enabled: Execute submit with natural human click
+      const subHandle = await ctx.evaluateHandle(() => {
         const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
-        const sub = btns.find(b => {
+        return btns.find(b => {
           const t = (b.innerText || b.value || '').trim().toLowerCase();
           return (t.includes('submit your application') || t.includes('submit application') || t === 'submit') &&
                  !b.disabled && b.getAttribute('aria-disabled') !== 'true';
-        });
+        }) || null;
+      }).catch(() => null);
 
-        if (sub) {
-          sub.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          sub.focus();
-          sub.click();
-          sub.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-          return true;
-        }
-        return false;
-      }).catch(() => false);
+      let clickSuccess = false;
+      if (subHandle && subHandle.asElement()) {
+        clickSuccess = await this.browserManager.humanClick(subHandle.asElement(), ctx);
+      }
+
+      if (!clickSuccess) {
+        clickSuccess = await ctx.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+          const sub = btns.find(b => {
+            const t = (b.innerText || b.value || '').trim().toLowerCase();
+            return (t.includes('submit your application') || t.includes('submit application') || t === 'submit') &&
+                   !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+          });
+          if (sub) {
+            sub.focus();
+            sub.click();
+            sub.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+            return true;
+          }
+          return false;
+        }).catch(() => false);
+      }
 
       if (clickSuccess) {
         this.log(`🤖 Copilot clicked final Submit: "${submitBtnInfo.text || 'Submit'}"!`);
@@ -977,9 +1082,9 @@ export class IndeedProvider extends BaseJobProvider {
 
     // 3. Look for Next / Continue / Review button with up to 3 retries
     const findAndClickNext = async () => {
-      return await ctx.evaluate(() => {
+      const btnHandle = await ctx.evaluateHandle(() => {
         const allButtons = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
-        const targetBtn = allButtons.find(b => {
+        return allButtons.find(b => {
           const t = (b.innerText || b.value || b.getAttribute('aria-label') || '').trim().toLowerCase();
           const isDisabled = b.disabled || b.getAttribute('aria-disabled') === 'true';
           if (isDisabled) return false;
@@ -1023,17 +1128,15 @@ export class IndeedProvider extends BaseJobProvider {
             t === 'review' ||
             t.includes('save and continue')
           );
-        });
+        }) || null;
+      }).catch(() => null);
 
-        if (targetBtn) {
-          targetBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          targetBtn.focus();
-          targetBtn.click();
-          targetBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-          return { found: true, text: targetBtn.innerText.trim() };
-        }
-        return { found: false };
-      }).catch(() => ({ found: false }));
+      if (btnHandle && btnHandle.asElement()) {
+        const text = await ctx.evaluate(el => (el.innerText || 'Continue').trim(), btnHandle).catch(() => 'Continue');
+        await this.browserManager.humanClick(btnHandle.asElement(), ctx);
+        return { found: true, text };
+      }
+      return { found: false };
     };
 
     let nextCheck = await findAndClickNext();

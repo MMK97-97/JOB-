@@ -337,7 +337,73 @@ export class LinkedInProvider extends BaseJobProvider {
         }
       }
 
-      // Apply answers in DOM
+      // 1. Natural sequential human interaction across questions
+      for (const q of rawQuestions) {
+        const answer = answersMap[q.prompt];
+        if (!answer) continue;
+
+        try {
+          if (q.type === 'text' || q.type === 'number') {
+            const inputHandle = await page.evaluateHandle((idx) => {
+              const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
+              const s = sections[idx];
+              return s ? s.querySelector('input[type="text"], input[type="number"], input:not([type])') : null;
+            }, q.index).catch(() => null);
+
+            if (inputHandle && inputHandle.asElement()) {
+              const isNumeric = q.type === 'number' || q.prompt.toLowerCase().includes('years');
+              const finalVal = isNumeric ? ((answer || '').match(/\d+/) || ['5'])[0] : answer;
+              await this.browserManager.humanType(inputHandle.asElement(), finalVal, page);
+            }
+          } else if (q.type === 'textarea') {
+            const taHandle = await page.evaluateHandle((idx) => {
+              const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
+              const s = sections[idx];
+              return s ? s.querySelector('textarea') : null;
+            }, q.index).catch(() => null);
+
+            if (taHandle && taHandle.asElement()) {
+              await this.browserManager.humanType(taHandle.asElement(), answer, page);
+            }
+          } else if (q.type === 'radio') {
+            const rHandle = await page.evaluateHandle((idx, ans) => {
+              const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
+              const s = sections[idx];
+              if (!s) return null;
+              const radios = Array.from(s.querySelectorAll('input[type="radio"]'));
+              const wantYes = ans.toLowerCase() === 'yes';
+              const wantNo = ans.toLowerCase() === 'no';
+              for (const r of radios) {
+                const rLbl = s.querySelector(`label[for="${r.id}"]`) || r.closest('label');
+                const text = (rLbl ? rLbl.innerText : '').trim().toLowerCase();
+                const val = (r.value || '').trim().toLowerCase();
+                if (wantYes && (text === 'yes' || text.startsWith('yes') || val === 'yes' || val === '1')) return rLbl || r;
+                if (wantNo && (text === 'no' || text.startsWith('no') || val === 'no' || val === '0')) return rLbl || r;
+                if (text.includes(ans.toLowerCase()) || val.includes(ans.toLowerCase())) return rLbl || r;
+              }
+              return null;
+            }, q.index, answer).catch(() => null);
+
+            if (rHandle && rHandle.asElement()) {
+              await this.browserManager.humanClick(rHandle.asElement(), page);
+            }
+          } else if (q.type === 'checkbox') {
+            const cbHandle = await page.evaluateHandle((idx) => {
+              const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
+              const s = sections[idx];
+              return s ? s.querySelector('input[type="checkbox"]') : null;
+            }, q.index).catch(() => null);
+
+            if (cbHandle && cbHandle.asElement()) {
+              await this.browserManager.humanClick(cbHandle.asElement(), page);
+            }
+          }
+        } catch (e) {}
+
+        await this.browserManager.delay(Math.floor(Math.random() * 200) + 140);
+      }
+
+      // 2. Fail-safe fast DOM synchronization pass
       await page.evaluate((answers) => {
         const sections = Array.from(document.querySelectorAll('.jobs-easy-apply-form-section__grouping, fieldset, .fb-dash-form-element'));
         sections.forEach(sec => {

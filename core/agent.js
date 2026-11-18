@@ -199,10 +199,27 @@ export class JobAgent extends EventEmitter {
               this.log(`✅ [${appliedCount}/${maxApps}] Processed application for "${job.title}" at "${job.company}". Status: ${applyResult.status}`);
             }
 
-            // Pacing delay between jobs (5-10 seconds) to avoid bot detection and behave human
-            const waitTime = Math.floor(Math.random() * 5000) + 4000;
-            this.log(`Pacing wait of ${(waitTime / 1000).toFixed(1)}s before next job...`);
-            await this.browserManager.delay(waitTime);
+            // Natural human pacing between jobs with realistic variance
+            let waitTime = Math.floor(Math.random() * 7000) + 7000; // 7 to 14s standard
+            // Every 4th application, candidate takes a natural short break (20-30s)
+            if (appliedCount > 0 && appliedCount % 4 === 0) {
+              waitTime += Math.floor(Math.random() * 12000) + 12000;
+              this.log(`☕ Candidate taking a natural human pause (~${(waitTime / 1000).toFixed(0)}s) before next application batch...`);
+            } else {
+              this.log(`Natural human pacing wait of ${(waitTime / 1000).toFixed(1)}s before reviewing next job...`);
+            }
+
+            // During pacing wait, perform subtle natural idle mouse movements
+            const fidgetInterval = 2800;
+            let elapsed = 0;
+            while (elapsed < waitTime && this.isRunning && !this.isPaused) {
+              const slice = Math.min(fidgetInterval, waitTime - elapsed);
+              await this.browserManager.delay(slice);
+              elapsed += slice;
+              if (Math.random() < 0.65) {
+                await this.browserManager.randomFidget().catch(() => {});
+              }
+            }
           }
         }
       }
