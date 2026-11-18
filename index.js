@@ -19,10 +19,31 @@ async function main() {
 
   if (isLogin) {
     console.log(chalk.cyan('Launching persistent browser profile for session login...'));
-    console.log(chalk.gray('Please log into your Indeed / LinkedIn account in the opened window.'));
-    console.log(chalk.gray('Once logged in, close the window or press Ctrl+C in this terminal.'));
     const agent = new JobAgent();
     await agent.browserManager.launch();
+    const page = await agent.browserManager.getPage();
+
+    console.log(chalk.yellow('Navigating to Indeed sign-in page...'));
+    await page.goto('https://secure.indeed.com/auth', { waitUntil: 'domcontentloaded' }).catch(() => {});
+
+    // Open LinkedIn in a second tab
+    try {
+      const liPage = await agent.browserManager.browser.newPage();
+      console.log(chalk.yellow('Opening LinkedIn sign-in page in a second tab...'));
+      await liPage.goto('https://www.linkedin.com/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
+    } catch (e) {}
+
+    console.log(chalk.bold.green('\n Both login tabs are now open in your Chrome window!'));
+    console.log(chalk.cyan('👉 Tab 1: Log in to your Indeed account'));
+    console.log(chalk.cyan('👉 Tab 2: Log in to your LinkedIn account'));
+    console.log(chalk.gray('\nOnce you finish logging in, simply close the Chrome browser window.'));
+    console.log(chalk.gray('Your login session will be permanently saved in ./data/chrome-profile.\n'));
+
+    // Keep process alive until user closes browser
+    await new Promise((resolve) => {
+      agent.browserManager.browser.on('disconnected', resolve);
+    });
+    console.log(chalk.green('Session saved successfully! You are ready to run the agent.'));
     return;
   }
 
