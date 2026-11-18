@@ -1,8 +1,8 @@
 import { BaseJobProvider } from './base-provider.js';
 
 export class IndeedProvider extends BaseJobProvider {
-  constructor(browserManager, profileManager, tracker) {
-    super('indeed', browserManager, profileManager, tracker);
+  constructor(browserManager, profileManager, tracker, agent = null) {
+    super('indeed', browserManager, profileManager, tracker, agent);
   }
 
   /**
@@ -280,7 +280,7 @@ export class IndeedProvider extends BaseJobProvider {
         await this.fillEducationFields(ctx, profile);
 
         // 4. Fill Screening Questions
-        await this.fillScreeningQuestions(ctx);
+        await this.fillScreeningQuestions(ctx, job);
 
         // 5. Fill Voluntary Self-ID / Demographic EEO
         await this.fillEEOFields(ctx, profile);
@@ -437,15 +437,16 @@ export class IndeedProvider extends BaseJobProvider {
     }
   }
 
-  async fillScreeningQuestions(ctx) {
+  async fillScreeningQuestions(ctx, job = {}) {
     try {
-      // Find all form fieldsets or question containers
+      // Find all top-level form fieldsets or question containers (avoid nested choice/option divs!)
       const rawQuestions = await ctx.evaluate(() => {
         const items = [];
-        const containers = document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"], div[class*="question"]');
+        const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+        const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
 
         containers.forEach((container, idx) => {
-          const legendOrLabel = container.querySelector('legend, label, .ia-Questions-label, [class*="label"], p');
+          const legendOrLabel = container.querySelector('legend, .ia-Questions-label, [class*="label"], p, label');
           const prompt = legendOrLabel ? legendOrLabel.innerText.trim() : '';
 
           if (prompt) {
@@ -463,8 +464,9 @@ export class IndeedProvider extends BaseJobProvider {
             } else if (radios.length > 0) {
               type = 'radio';
               radios.forEach(r => {
-                const label = container.querySelector(`label[for="${r.id}"]`) || r.parentElement;
-                if (label) options.push({ id: r.id, value: r.value, text: label.innerText.trim() });
+                const label = container.querySelector(`label[for="${r.id}"]`) || r.closest('label');
+                const text = label ? label.innerText.trim() : r.value;
+                if (text) options.push({ id: r.id, value: r.value, text });
               });
             } else if (select) {
               type = 'select';
@@ -483,20 +485,50 @@ export class IndeedProvider extends BaseJobProvider {
         return items;
       });
 
-      // Compute tailored answers based on resume for each question
+      // Compute or prompt candidate answers for each question
       const answersMap = {};
       for (const q of rawQuestions) {
-        const ans = this.profileManager.answerQuestion(q.prompt, q.type, q.options.map(o => o.text || o.value));
-        answersMap[q.prompt] = ans;
-        this.log(`🤖 Copilot answered: "${q.prompt.substring(0, 45)}..." ➔ "${ans.substring(0, 60)}"`);
+        // 1. Check if candidate previously saved this exact or similar question
+        const savedCustom = this.profileManager.findSavedCustomAnswer(q.prompt);
+        if (savedCustom !== null) {
+          answersMap[q.prompt] = savedCustom;
+          this.log(`🧠 Copilot using remembered candidate answer: "${q.prompt.substring(0, 45)}..." ➔ "${savedCustom}"`);
+          continue;
+        }
+
+        // 2. Check if known standard question
+        const isKnown = this.profileManager.isKnownQuestion(q.prompt, q.type, q.options.map(o => o.text || o.value));
+        const defaultAns = this.profileManager.answerQuestion(q.prompt, q.type, q.options.map(o => o.text || o.value));
+
+        if (isKnown) {
+          answersMap[q.prompt] = defaultAns;
+          this.log(`🤖 Copilot answered: "${q.prompt.substring(0, 45)}..." ➔ "${defaultAns.substring(0, 60)}"`);
+          continue;
+        }
+
+        // 3. Question is UNKNOWN: Ask candidate before continuing!
+        this.log(`❓ Unknown question encountered: "${q.prompt}". Asking candidate on dashboard before continuing...`, 'warning');
+        if (this.agent && typeof this.agent.askUserQuestion === 'function') {
+          const userAnswer = await this.agent.askUserQuestion({
+            prompt: q.prompt,
+            type: q.type,
+            options: q.options.map(o => o.text || o.value),
+            defaultAnswer: defaultAns,
+            job
+          });
+          answersMap[q.prompt] = userAnswer;
+        } else {
+          answersMap[q.prompt] = defaultAns;
+        }
       }
 
       // Apply each answer directly to its specific container in the page DOM
       await ctx.evaluate((answers) => {
-        const containers = document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"], div[class*="question"]');
+        const all = Array.from(document.querySelectorAll('fieldset, .ia-Questions-item, [data-testid*="question"]'));
+        const containers = all.filter(c => !all.some(parent => parent !== c && parent.contains(c)));
 
         containers.forEach(container => {
-          const legendOrLabel = container.querySelector('legend, label, .ia-Questions-label, [class*="label"], p');
+          const legendOrLabel = container.querySelector('legend, .ia-Questions-label, [class*="label"], p, label');
           const prompt = legendOrLabel ? legendOrLabel.innerText.trim() : '';
           if (!prompt) return;
 
@@ -535,18 +567,43 @@ export class IndeedProvider extends BaseJobProvider {
             return;
           }
 
-          // 3. Radio Buttons
+          // 3. Radio Buttons: NEVER blindly click No or radios[0]!
           const radios = Array.from(container.querySelectorAll('input[type="radio"]'));
           if (radios.length > 0) {
-            const matchedRadio = radios.find(r => {
-              const lbl = container.querySelector(`label[for="${r.id}"]`) || r.parentElement;
-              const text = (lbl ? lbl.innerText : r.value).toLowerCase();
-              return text === answer.toLowerCase() || text.includes(answer.toLowerCase());
-            }) || radios[0];
+            const wantYes = answer.toLowerCase() === 'yes';
+            const wantNo = answer.toLowerCase() === 'no';
+            let targetRadio = null;
 
-            if (matchedRadio) {
-              matchedRadio.click();
-              matchedRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            for (const r of radios) {
+              const labelEl = container.querySelector(`label[for="${r.id}"]`) || r.closest('label');
+              const text = (labelEl ? labelEl.innerText : '').trim().toLowerCase();
+              const val = (r.value || '').trim().toLowerCase();
+
+              if (wantYes) {
+                if (text === 'yes' || text.startsWith('yes') || val === 'yes' || val === '1' || val === 'true') {
+                  targetRadio = r;
+                  break;
+                }
+              } else if (wantNo) {
+                if (text === 'no' || text.startsWith('no') || val === 'no' || val === '0' || val === 'false') {
+                  targetRadio = r;
+                  break;
+                }
+              } else {
+                if (text.includes(answer.toLowerCase()) || val.includes(answer.toLowerCase())) {
+                  targetRadio = r;
+                  break;
+                }
+              }
+            }
+
+            if (targetRadio) {
+              if (!targetRadio.checked) {
+                targetRadio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetRadio.click();
+                targetRadio.dispatchEvent(new Event('input', { bubbles: true }));
+                targetRadio.dispatchEvent(new Event('change', { bubbles: true }));
+              }
             }
             return;
           }
@@ -568,7 +625,7 @@ export class IndeedProvider extends BaseJobProvider {
 
       await this.browserManager.delay(1200);
     } catch (e) {
-      this.log(`Screening questions auto-fill note: ${e.message}`, 'info');
+      this.log(`Screening questions note: ${e.message}`, 'info');
     }
   }
 

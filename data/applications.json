@@ -1,6 +1,21 @@
 [
   {
-    "id": "app_1794973071285_46izsr",
+    "id": "app_1794977044040_askdxy",
+    "jobId": "0ed5207894543703",
+    "title": "Purchasing Agent",
+    "company": "Precision Garage Doors",
+    "location": "Clearwater, FL 33762",
+    "url": "https://www.indeed.com/viewjob?jk=0ed5207894543703",
+    "board": "indeed",
+    "matchScore": 85,
+    "salary": "Not listed",
+    "status": "SUBMITTED",
+    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-0ed5207894543703-1794977043961.png",
+    "appliedAt": "2026-11-18T04:44:04.040Z",
+    "notes": "Successfully submitted"
+  },
+  {
+    "id": "app_1794976948514_z2b5n9",
     "jobId": "9b00a3287b112834",
     "title": "Commodity Manager",
     "company": "MI Windows and Doors LLC",
@@ -9,10 +24,10 @@
     "board": "indeed",
     "matchScore": 80,
     "salary": "Not listed",
-    "status": "REQUIRES_VERIFICATION",
-    "screenshot": "C:\\Users\\Manne\\.gemini\\antigravity\\scratch\\JOB-\\data\\screenshots\\finish-9b00a3287b112834-1794973071142.png",
-    "appliedAt": "2026-11-18T03:37:51.285Z",
-    "notes": "Pending final review or verification"
+    "status": "SKIPPED",
+    "screenshot": null,
+    "appliedAt": "2026-11-18T04:42:28.514Z",
+    "notes": "Company requires external application portal"
   },
   {
     "id": "app_1794972935983_zdawn1",

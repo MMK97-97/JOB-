@@ -16,12 +16,108 @@ export class ProfileManager {
 
   load() {
     this.profile = JSON.parse(fs.readFileSync(this.profilePath, 'utf8'));
+    this.profile.customAnswers = this.profile.customAnswers || {};
     this.searchCriteria = JSON.parse(fs.readFileSync(this.searchCriteriaPath, 'utf8'));
   }
 
   saveProfile(updatedProfile) {
     this.profile = { ...this.profile, ...updatedProfile };
     fs.writeFileSync(this.profilePath, JSON.stringify(this.profile, null, 2), 'utf8');
+  }
+
+  normalizeQuestionKey(text) {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  findSavedCustomAnswer(questionText) {
+    if (!this.profile.customAnswers) return null;
+    const norm = this.normalizeQuestionKey(questionText);
+    if (!norm) return null;
+
+    if (this.profile.customAnswers[norm]) {
+      return this.profile.customAnswers[norm].answer;
+    }
+    for (const [key, item] of Object.entries(this.profile.customAnswers)) {
+      if (norm.includes(key) || key.includes(norm)) {
+        return item.answer;
+      }
+    }
+    return null;
+  }
+
+  saveCustomAnswer(questionText, answer, type = 'text') {
+    this.profile.customAnswers = this.profile.customAnswers || {};
+    const key = this.normalizeQuestionKey(questionText);
+    this.profile.customAnswers[key] = {
+      prompt: questionText,
+      answer: answer,
+      type: type,
+      savedAt: new Date().toISOString()
+    };
+    this.saveProfile(this.profile);
+    return this.profile.customAnswers[key];
+  }
+
+  deleteCustomAnswer(key) {
+    if (this.profile.customAnswers && this.profile.customAnswers[key]) {
+      delete this.profile.customAnswers[key];
+      this.saveProfile(this.profile);
+      return true;
+    }
+    return false;
+  }
+
+  isKnownQuestion(questionText, inputType = 'text', options = []) {
+    // 1. Check if candidate previously answered & saved it
+    if (this.findSavedCustomAnswer(questionText) !== null) {
+      return true;
+    }
+
+    const q = questionText.toLowerCase().trim();
+
+    // 2. Commute & Relocation
+    if (q.includes('commute') || q.includes('reliably commute') || q.includes('travel to') || q.includes('on-site') || q.includes('hybrid') || q.includes('relocate')) {
+      return true;
+    }
+
+    // 3. Authorization & Legal
+    if (
+      q.includes('authorized') || q.includes('sponsorship') || q.includes('visa') ||
+      q.includes('background check') || q.includes('drug test') || q.includes('driver') ||
+      q.includes('18 years') || q.includes('previously employed') || q.includes('relative') ||
+      q.includes('felony') || q.includes('convicted')
+    ) {
+      return true;
+    }
+
+    // 4. EEO & Demographics
+    if (
+      q.includes('gender') || q.includes('sex') || q.includes('pronoun') ||
+      q.includes('race') || q.includes('ethnicity') || q.includes('hispanic') ||
+      q.includes('latino') || q.includes('veteran') || q.includes('disability')
+    ) {
+      return true;
+    }
+
+    // 5. Role qualifications & experience
+    if (
+      q.includes('automotive') || q.includes('auto part') || q.includes('diesel') ||
+      q.includes('overtime') || q.includes('show up daily') || q.includes('attendance') ||
+      q.includes('essential to the success') || q.includes('highest level of education') ||
+      q.includes('degree') || q.includes('years of experience') || q.includes('how many years') ||
+      q.includes('salary') || q.includes('compensation') || q.includes('pay') ||
+      q.includes('notice') || q.includes('start date') || q.includes('availability') ||
+      q.includes('cover letter') || q.includes('statement')
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   saveSearchCriteria(updatedCriteria) {
@@ -45,7 +141,43 @@ export class ProfileManager {
    * Intelligently answers a question given prompt text and question type
    */
   answerQuestion(questionText, inputType = 'text', options = []) {
+    // 0. Priority: Check if candidate previously answered & saved this exact or similar question
+    const savedCustom = this.findSavedCustomAnswer(questionText);
+    if (savedCustom !== null) {
+      if (options && options.length > 0) {
+        const match = options.find(o =>
+          o.toLowerCase() === savedCustom.toLowerCase() ||
+          o.toLowerCase().startsWith(savedCustom.toLowerCase()) ||
+          o.toLowerCase().includes(savedCustom.toLowerCase())
+        );
+        if (match) return match;
+      }
+      return savedCustom;
+    }
+
     const q = questionText.toLowerCase().trim();
+
+    // Commute: Always prioritize affirmative commute readiness across all location variations
+    if (
+      q.includes('commute') ||
+      q.includes('reliably commute') ||
+      q.includes('commute to') ||
+      q.includes('travel to') ||
+      q.includes('on-site') ||
+      q.includes('hybrid') ||
+      q.includes('in-person') ||
+      q.includes('transportation')
+    ) {
+      const commuteAns = this.profile.screeningAnswers?.commute_ok || 'Yes';
+      if (options.length > 0) {
+        const match = options.find(o =>
+          o.toLowerCase() === commuteAns.toLowerCase() ||
+          o.toLowerCase().startsWith(commuteAns.toLowerCase())
+        );
+        if (match) return match;
+      }
+      return commuteAns;
+    }
 
     // If input is textarea or open-ended text without options, generate tailored statement based on resume
     if (inputType === 'textarea' || (inputType === 'text' && (!options || options.length === 0))) {

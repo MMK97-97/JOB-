@@ -1,12 +1,13 @@
 import EventEmitter from 'events';
 
 export class BaseJobProvider extends EventEmitter {
-  constructor(name, browserManager, profileManager, tracker) {
+  constructor(name, browserManager, profileManager, tracker, agent = null) {
     super();
     this.name = name;
     this.browserManager = browserManager;
     this.profileManager = profileManager;
     this.tracker = tracker;
+    this.agent = agent;
   }
 
   log(msg, type = 'info') {

@@ -17,10 +17,10 @@ export class JobAgent extends EventEmitter {
     this.matcher = new JobMatcher(this.profileManager.profile, this.profileManager.searchCriteria);
 
     this.providers = {
-      indeed: new IndeedProvider(this.browserManager, this.profileManager, this.tracker),
-      linkedin: new LinkedInProvider(this.browserManager, this.profileManager, this.tracker),
-      greenhouse: new GreenhouseProvider(this.browserManager, this.profileManager, this.tracker),
-      lever: new LeverProvider(this.browserManager, this.profileManager, this.tracker)
+      indeed: new IndeedProvider(this.browserManager, this.profileManager, this.tracker, this),
+      linkedin: new LinkedInProvider(this.browserManager, this.profileManager, this.tracker, this),
+      greenhouse: new GreenhouseProvider(this.browserManager, this.profileManager, this.tracker, this),
+      lever: new LeverProvider(this.browserManager, this.profileManager, this.tracker, this)
     };
 
     // Forward provider logs & events
@@ -30,8 +30,59 @@ export class JobAgent extends EventEmitter {
       p.on('step', evt => this.emit('job-step', evt));
     });
 
+    this.pendingQuestions = new Map();
     this.isRunning = false;
     this.isPaused = false;
+  }
+
+  askUserQuestion({ questionId, prompt, type = 'text', options = [], defaultAnswer = 'Yes', job = {} }) {
+    return new Promise((resolve) => {
+      const qId = questionId || `q_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+      this.log(`❓ Copilot asking candidate: "${prompt}" - Waiting for candidate answer on dashboard...`, 'warning');
+
+      this.emit('question-prompt', {
+        questionId: qId,
+        prompt,
+        type,
+        options,
+        defaultAnswer,
+        job: { title: job?.title || 'Active Target', company: job?.company || '' }
+      });
+
+      // 60-second grace timer before continuing with smart fallback
+      const timer = setTimeout(() => {
+        if (this.pendingQuestions.has(qId)) {
+          this.log(`⏱️ Response timeout (60s) reached for "${prompt}". Proceeding with resume-grounded default: "${defaultAnswer}".`, 'info');
+          this.pendingQuestions.delete(qId);
+          resolve(defaultAnswer);
+        }
+      }, 60000);
+
+      this.pendingQuestions.set(qId, {
+        resolve: (ans) => {
+          clearTimeout(timer);
+          this.pendingQuestions.delete(qId);
+          resolve(ans);
+        },
+        prompt,
+        type
+      });
+    });
+  }
+
+  resolveUserQuestion(questionId, answer, remember = true) {
+    const pending = this.pendingQuestions.get(questionId);
+    if (pending) {
+      if (remember) {
+        this.profileManager.saveCustomAnswer(pending.prompt, answer, pending.type);
+        this.log(`💾 Saved candidate answer permanently for future applications: "${pending.prompt}" ➔ "${answer}"`, 'info');
+      }
+      pending.resolve(answer);
+      this.emit('question-resolved', { questionId, answer });
+      return true;
+    }
+    return false;
   }
 
   log(message, type = 'info') {

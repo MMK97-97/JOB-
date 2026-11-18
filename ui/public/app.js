@@ -137,6 +137,16 @@ function handleAgentEvent(event, data) {
     case 'search-results':
       appendLog(`Found ${data.count} roles for "${data.title}" in "${data.location}"`, 'info');
       break;
+
+    case 'question-prompt':
+      appendLog(`❓ Employer question needs your answer: "${data.prompt}"`, 'warning');
+      showQuestionPromptModal(data);
+      break;
+
+    case 'question-resolved':
+      hideQuestionPromptModal();
+      loadData();
+      break;
   }
 }
 
@@ -300,7 +310,111 @@ function populateProfile(profile) {
   if (document.getElementById('profCommute')) document.getElementById('profCommute').value = s.commute_ok || 'Yes';
   if (document.getElementById('profEducation')) document.getElementById('profEducation').value = s.highest_education || profile.education?.highestLevel || "Master's Degree";
   if (document.getElementById('profExpYears')) document.getElementById('profExpYears').value = s.default_experience_years || 5;
+
+  renderLearnedQuestions(profile.customAnswers || {});
 }
+
+let currentPendingQuestion = null;
+
+function showQuestionPromptModal(data) {
+  currentPendingQuestion = data;
+  const modal = document.getElementById('modalQuestionPrompt');
+  if (!modal) return;
+
+  document.getElementById('promptJobSubtitle').textContent = data.job
+    ? `Applying for "${data.job.title}" at "${data.job.company}"`
+    : 'Active Job Application';
+  document.getElementById('promptQuestionText').textContent = data.prompt;
+
+  const container = document.getElementById('promptInputArea');
+  container.innerHTML = '';
+
+  const options = data.options || [];
+  if (options.length > 0) {
+    options.forEach((opt, idx) => {
+      const optVal = typeof opt === 'object' ? (opt.text || opt.value) : opt;
+      const isChecked = idx === 0 || optVal.toLowerCase() === 'yes';
+      const row = document.createElement('label');
+      row.className = 'flex items-center space-x-3 p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-blue-500/50 cursor-pointer transition';
+      row.innerHTML = `
+        <input type="radio" name="userPromptChoice" value="${escapeHtml(optVal)}" ${isChecked ? 'checked' : ''} class="text-blue-600 bg-slate-900 border-slate-700 focus:ring-0">
+        <span class="text-xs text-white font-medium">${escapeHtml(optVal)}</span>
+      `;
+      container.appendChild(row);
+    });
+  } else if (data.type === 'number') {
+    container.innerHTML = `
+      <input type="number" id="userPromptInputVal" value="${escapeHtml(data.defaultAnswer || '5')}" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-blue-500">
+    `;
+  } else if (data.type === 'textarea') {
+    container.innerHTML = `
+      <textarea id="userPromptInputVal" rows="4" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-blue-500">${escapeHtml(data.defaultAnswer || '')}</textarea>
+    `;
+  } else {
+    container.innerHTML = `
+      <input type="text" id="userPromptInputVal" value="${escapeHtml(data.defaultAnswer || 'Yes')}" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-blue-500">
+    `;
+  }
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function hideQuestionPromptModal() {
+  currentPendingQuestion = null;
+  const modal = document.getElementById('modalQuestionPrompt');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function renderLearnedQuestions(customAnswers = {}) {
+  const container = document.getElementById('learnedQuestionsContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const entries = Object.entries(customAnswers || {});
+  if (entries.length === 0) {
+    container.innerHTML = `
+      <div class="p-3.5 rounded-lg bg-slate-950 border border-slate-800/80 text-xs text-slate-400 italic text-center">
+        No custom learned questions yet. Questions asked by employers will appear and save here automatically.
+      </div>
+    `;
+    return;
+  }
+
+  entries.forEach(([key, item]) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 transition text-xs';
+    row.innerHTML = `
+      <div class="space-y-1 pr-4">
+        <p class="font-medium text-white">${escapeHtml(item.prompt || key)}</p>
+        <div class="flex items-center space-x-2">
+          <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            Answer: ${escapeHtml(item.answer)}
+          </span>
+          <span class="text-[10px] text-slate-500">Saved: ${item.savedAt ? new Date(item.savedAt).toLocaleDateString() : 'Active'}</span>
+        </div>
+      </div>
+      <button onclick="removeCustomAnswer('${escapeHtml(key)}')" class="text-slate-500 hover:text-rose-400 text-xs px-2.5 py-1.5 rounded hover:bg-slate-900 transition" title="Delete remembered answer">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+    `;
+    container.appendChild(row);
+  });
+}
+
+window.removeCustomAnswer = async function(key) {
+  if (!confirm('Remove this saved question answer from candidate memory?')) return;
+  try {
+    await fetch(`/api/custom-answers/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    showToast('Question removed from candidate memory.');
+    loadData();
+  } catch (e) {
+    console.error(e);
+  }
+};
 
 function initMultiSelectFilters() {
   const btnRole = document.getElementById('btnRoleDropdown');
@@ -849,6 +963,66 @@ function bindEvents() {
   document.getElementById('modalScreenshotClose').addEventListener('click', () => {
     document.getElementById('modalScreenshot').classList.add('hidden');
     document.getElementById('modalScreenshot').classList.remove('flex');
+  });
+
+  // Submit Answer to Interactive Prompt
+  document.getElementById('btnSubmitUserAnswer').addEventListener('click', async () => {
+    if (!currentPendingQuestion) return;
+    let answer = 'Yes';
+    const radio = document.querySelector('input[name="userPromptChoice"]:checked');
+    if (radio) {
+      answer = radio.value;
+    } else {
+      const valInput = document.getElementById('userPromptInputVal');
+      if (valInput) answer = valInput.value.trim();
+    }
+
+    const remember = document.getElementById('promptRememberAnswer').checked;
+
+    try {
+      await fetch('/api/agent/answer-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: currentPendingQuestion.questionId,
+          prompt: currentPendingQuestion.prompt,
+          answer,
+          remember,
+          type: currentPendingQuestion.type
+        })
+      });
+      showToast(`Answer "${answer}" submitted! Copilot resuming application...`);
+      hideQuestionPromptModal();
+      loadData();
+    } catch (e) {
+      alert('Error sending answer: ' + e.message);
+    }
+  });
+
+  // Add New Custom Question manually
+  document.getElementById('btnAddNewCustomQuestion').addEventListener('click', async () => {
+    const questionText = prompt('Enter the Employer Screening Question:');
+    if (!questionText || !questionText.trim()) return;
+    const answerText = prompt(`Enter your preferred answer for:\n"${questionText.trim()}"`, 'Yes');
+    if (answerText === null) return;
+
+    try {
+      await fetch('/api/agent/answer-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: 'manual_' + Date.now(),
+          prompt: questionText.trim(),
+          answer: answerText.trim(),
+          remember: true,
+          type: 'text'
+        })
+      });
+      showToast('Custom question & answer saved to candidate memory!');
+      loadData();
+    } catch (e) {
+      alert('Error saving answer: ' + e.message);
+    }
   });
 }
 

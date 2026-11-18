@@ -37,6 +37,8 @@ export function createServer(port = 3000) {
   agent.on('job-step', evt => broadcast('job-step', evt));
   agent.on('agent-state', evt => broadcast('agent-state', evt));
   agent.on('search-results', evt => broadcast('search-results', evt));
+  agent.on('question-prompt', evt => broadcast('question-prompt', evt));
+  agent.on('question-resolved', evt => broadcast('question-resolved', evt));
 
   // REST API Routes
   app.get('/api/status', (req, res) => {
@@ -45,6 +47,31 @@ export function createServer(port = 3000) {
       isPaused: agent.isPaused,
       stats: agent.tracker.getStats()
     });
+  });
+
+  app.get('/api/custom-answers', (req, res) => {
+    res.json(agent.profileManager.profile.customAnswers || {});
+  });
+
+  app.delete('/api/custom-answers/:key', (req, res) => {
+    const success = agent.profileManager.deleteCustomAnswer(req.params.key);
+    res.json({ success, customAnswers: agent.profileManager.profile.customAnswers || {} });
+  });
+
+  app.post('/api/agent/answer-question', (req, res) => {
+    const { questionId, answer, remember = true, prompt, type } = req.body;
+    if (!questionId || answer === undefined) {
+      return res.status(400).json({ error: 'Missing questionId or answer' });
+    }
+
+    const resolved = agent.resolveUserQuestion(questionId, answer, remember);
+    if (!resolved && prompt && remember) {
+      // Direct save even if not currently pending
+      agent.profileManager.saveCustomAnswer(prompt, answer, type || 'text');
+    }
+
+    broadcast('question-resolved', { questionId, answer });
+    res.json({ success: true, answer });
   });
 
   app.get('/api/profile', (req, res) => {
